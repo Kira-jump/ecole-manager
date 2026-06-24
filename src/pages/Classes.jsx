@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, School } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useToast } from '../contexts/ToastContext'
 import { getClasses, createClass, updateClass, deleteClass, getActiveYear } from '../lib/db'
 import PageHeader from '../components/ui/PageHeader'
@@ -16,6 +17,7 @@ const LEVELS = [
 
 export default function Classes() {
   const toast = useToast()
+  const navigate = useNavigate()
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(null)
@@ -96,7 +98,7 @@ export default function Classes() {
                 <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">{lvl.label}</h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {list.map(c => (
-                    <div key={c.id} className="card p-5 hover:shadow-md transition-shadow">
+                    <div key={c.id} className="card p-5 hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate(`/classes/${c.id}`)}>
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-lg bg-brand-100 text-brand-700 flex items-center justify-center">

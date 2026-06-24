@@ -6,6 +6,7 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Users from './pages/Users'
 import Classes from './pages/Classes'
+import ClassDetail from './pages/ClassDetail'
 import Students from './pages/Students'
 import Teachers from './pages/Teachers'
 import Subjects from './pages/Subjects'
@@ -31,7 +32,6 @@ export default function App() {
 
   if (loading) return <FullScreenLoader />
 
-  // Pas connecté → login
   if (!session) {
     return (
       <Routes>
@@ -41,21 +41,17 @@ export default function App() {
     )
   }
 
-  // Connecté mais profil introuvable (cas exceptionnel)
   if (!profile) {
     return (
       <div className="h-full flex items-center justify-center p-6">
         <div className="card p-8 max-w-md text-center">
           <h2 className="text-lg font-semibold text-slate-900">Profil introuvable</h2>
-          <p className="text-sm text-slate-600 mt-2">
-            Ton compte n'a pas encore de profil configuré. Contacte l'administrateur.
-          </p>
+          <p className="text-sm text-slate-600 mt-2">Contacte l'administrateur.</p>
         </div>
       </div>
     )
   }
 
-  // Doit changer son mot de passe avant tout
   if (profile.must_change_password) {
     return (
       <Routes>
@@ -76,6 +72,7 @@ export default function App() {
 
         <Route element={<ProtectedRoute allow={['fondateur', 'directeur_general', 'directeur_etudes', 'coordinateur']} />}>
           <Route path="/classes" element={<Classes />} />
+          <Route path="/classes/:id" element={<ClassDetail />} />
           <Route path="/subjects" element={<Subjects />} />
         </Route>
 
