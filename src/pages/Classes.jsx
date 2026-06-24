@@ -19,6 +19,7 @@ const LEVELS = [
 
 export default function Classes() {
   const toast = useToast()
+  const { profile } = useAuth()
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)

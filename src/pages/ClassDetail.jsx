@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useAuth } from '../contexts/AuthContext'
+import { isAdmin, isPedagogy } from '../lib/roles'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Users, BookOpen, Info, GraduationCap, Phone, Calendar, User } from 'lucide-react'
@@ -202,6 +204,8 @@ const LEVELS = { primaire: 'Primaire', college: 'Collège', lycee: 'Lycée' }
 export default function ClassDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { profile } = useAuth()
+  const canEdit = isPedagogy(profile?.role)
   const [tab, setTab] = useState('eleves')
   const [selectedStudent, setSelectedStudent] = useState(null)
 
