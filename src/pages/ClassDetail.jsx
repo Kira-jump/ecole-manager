@@ -274,8 +274,8 @@ export default function ClassDetail() {
                     <p className="font-medium text-slate-900">{s.first_name} {s.last_name}</p>
                     <p className="text-xs text-slate-500">Matricule : {s.matricule}</p>
                   </div>
-                  <div className="text-xs text-slate-400">
-                    {s.gender === 'M' ? '👦' : s.gender === 'F' ? '👧' : ''}
+                  <div className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
+                    {s.gender === 'M' ? 'M' : s.gender === 'F' ? 'F' : ''}
                   </div>
                 </button>
               ))}
