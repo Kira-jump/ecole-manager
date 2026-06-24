@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { UserPlus, Copy, Check, Power, Search } from 'lucide-react'
-import { createUserWithEmailAndPassword } from 'firebase/auth'
+import { createUserWithEmailAndPassword, getAuth } from 'firebase/auth'
+import { initializeApp } from 'firebase/app'
 import { useToast } from '../contexts/ToastContext'
 import { getProfiles, toggleProfileActive, createUserRecord, getClasses } from '../lib/db'
 import { ROLES, ROLE_LIST, roleLabel, roleColor } from '../lib/roles'
@@ -66,9 +67,13 @@ export default function Users() {
       // Pour les élèves : faux email interne, pour le staff : vrai email
       const authEmail = isStudent ? matriculeToEmail(matricule) : form.email
 
-      // Créer le compte Firebase Auth
-      const cred = await createUserWithEmailAndPassword(auth, authEmail, tempPassword)
+      // Créer une instance secondaire pour ne pas déconnecter l'admin
+      const secondaryApp = initializeApp(auth.app.options, 'secondary-' + Date.now())
+      const secondaryAuth = getAuth(secondaryApp)
+      const cred = await createUserWithEmailAndPassword(secondaryAuth, authEmail, tempPassword)
       const uid = cred.user.uid
+      await secondaryAuth.signOut()
+      await secondaryApp.delete()
 
       // Créer le profil + sous-table Firestore
       await createUserRecord(
