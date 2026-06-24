@@ -46,6 +46,18 @@ export const getClasses = async () => {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }))
 }
 
+export const getClassesForTeacher = async (teacherId) => {
+  // Récupère toutes les affectations du prof
+  const q = query(collection(db, 'teaching_assignments'), where('teacher_id', '==', teacherId))
+  const snap = await getDocs(q)
+  const classIds = [...new Set(snap.docs.map(d => d.data().class_id))]
+  if (!classIds.length) return []
+
+  // Récupère les classes correspondantes
+  const allClasses = await getClasses()
+  return allClasses.filter(c => classIds.includes(c.id))
+}
+
 export const createClass = async (data) => {
   await addDoc(collection(db, 'classes'), { ...data, created_at: serverTimestamp() })
 }

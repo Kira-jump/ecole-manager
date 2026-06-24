@@ -3,7 +3,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, School } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useToast } from '../contexts/ToastContext'
-import { getClasses, createClass, updateClass, deleteClass, getActiveYear } from '../lib/db'
+import { useAuth } from '../contexts/AuthContext'
+import { isTeacher } from '../lib/roles'
+import { getClasses, getClassesForTeacher, createClass, updateClass, deleteClass, getActiveYear, getTeacherByProfileId } from '../lib/db'
 import PageHeader from '../components/ui/PageHeader'
 import Modal from '../components/ui/Modal'
 import EmptyState from '../components/ui/EmptyState'
@@ -23,7 +25,19 @@ export default function Classes() {
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({ name: '', level: 'college', capacity: 50 })
 
-  const classes = useQuery({ queryKey: ['classes'], queryFn: getClasses })
+  const myTeacher = useQuery({
+    queryKey: ['my-teacher-cls', profile?.id],
+    enabled: isTeacher(profile?.role),
+    queryFn: () => getTeacherByProfileId(profile.id),
+  })
+
+  const classes = useQuery({
+    queryKey: ['classes', profile?.role, myTeacher.data?.id],
+    enabled: !isTeacher(profile?.role) || !!myTeacher.data?.id,
+    queryFn: () => isTeacher(profile?.role)
+      ? getClassesForTeacher(myTeacher.data.id)
+      : getClasses(),
+  })
 
   const counts = useQuery({
     queryKey: ['student-counts'],
@@ -78,7 +92,7 @@ export default function Classes() {
       <PageHeader
         title="Classes"
         description="Organisation des classes par niveau"
-        actions={<button onClick={openCreate} className="btn-primary"><Plus size={16} /> Nouvelle classe</button>}
+        actions={!isTeacher(profile?.role) && <button onClick={openCreate} className="btn-primary"><Plus size={16} /> Nouvelle classe</button>}
       />
 
       {classes.isLoading ? (
