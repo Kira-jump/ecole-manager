@@ -82,7 +82,19 @@ export const getStudents = async (classFilter = '') => {
   const snap = await getDocs(q)
   let data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
   if (classFilter) data = data.filter(s => s.class_id === classFilter)
-  return data
+
+  const enriched = await Promise.all(data.map(async (s) => {
+    if (!s.profile_id) return s
+    try {
+      const pSnap = await getDoc(doc(db, 'profiles', s.profile_id))
+      if (pSnap.exists()) {
+        const p = pSnap.data()
+        return { ...s, first_name: p.first_name ?? '', last_name: p.last_name ?? '', email: p.email ?? null }
+      }
+    } catch(e) {}
+    return s
+  }))
+  return enriched
 }
 
 export const getStudentByProfileId = async (profileId) => {
