@@ -28,6 +28,7 @@ const blank = {
   email: '', first_name: '', last_name: '', role: 'professeur',
   phone: '', matricule: '', class_id: '', specialization: '',
   birth_date: '', gender: '', parent_name: '', parent_phone: '',
+  password: '',
 }
 
 export default function Users() {
@@ -56,7 +57,7 @@ export default function Users() {
     e.preventDefault()
     setSubmitting(true)
     try {
-      const tempPassword = generatePassword()
+      const tempPassword = form.password || generatePassword()
       const isStudent = form.role === 'eleve'
       const isTeacher = form.role === 'professeur'
       const needsMatricule = isStudent || isTeacher
@@ -68,12 +69,12 @@ export default function Users() {
       const authEmail = isStudent ? matriculeToEmail(matricule) : form.email
 
       // Créer une instance secondaire pour ne pas déconnecter l'admin
-      const secondaryApp = initializeApp(auth.app.options, 'secondary-' + Date.now())
+      const appName = 'secondary-' + Date.now()
+      const secondaryApp = initializeApp(auth.app.options, appName)
       const secondaryAuth = getAuth(secondaryApp)
       const cred = await createUserWithEmailAndPassword(secondaryAuth, authEmail, tempPassword)
       const uid = cred.user.uid
       await secondaryAuth.signOut()
-      await secondaryApp.delete()
 
       // Créer le profil + sous-table Firestore
       await createUserRecord(
@@ -299,6 +300,14 @@ export default function Users() {
                 <input className="input" type="email" required={!isStudentRole} value={form.email} onChange={e => setField('email', e.target.value)}
                   placeholder="nom@ecole.com" /></div>
             )}
+
+            {/* Mot de passe */}
+            <div>
+              <label className="label">Mot de passe</label>
+              <input className="input" type="password" value={form.password} onChange={e => setField('password', e.target.value)}
+                placeholder="Laisser vide pour génération automatique" autoComplete="new-password" />
+              <p className="text-xs text-slate-400 mt-1">Si vide, un mot de passe sécurisé sera généré automatiquement.</p>
+            </div>
 
             {/* Matricule pour élève et prof */}
             {(isStudentRole || isTeacherRole) && (
