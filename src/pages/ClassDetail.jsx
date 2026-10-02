@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { isAdmin, isPedagogy } from '../lib/roles'
+import { useAuth } from '../contexts/AuthContext'
+import { isAdmin, isPedagogy } from '../lib/roles'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Users, BookOpen, Info, GraduationCap, Phone, Calendar, User } from 'lucide-react'
