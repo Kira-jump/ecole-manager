@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Users, BookOpen, Info, GraduationCap, Phone, Calendar, User } from 'lucide-react'
 import { doc, getDoc, collection, query, where, getDocs, orderBy } from 'firebase/firestore'
 import { db } from '../lib/firebase'
-import { getStudents, getSubjects, getAssignments, getGrades, getMyAttendance } from '../lib/db'
+import { getStudents, getSubjects, getTeachers, getAssignments, getGrades, getMyAttendance } from '../lib/db'
 import Spinner from '../components/ui/Spinner'
 import EmptyState from '../components/ui/EmptyState'
 import Modal from '../components/ui/Modal'
@@ -49,16 +49,13 @@ function useClassSubjects(classId) {
       const allSubjects = await getSubjects()
       const subjects = allSubjects.filter(s => subjectIds.includes(s.id))
 
-      // Pour chaque matière, trouve le prof
-      const result = await Promise.all(subjects.map(async (s) => {
+      // Pour chaque matière, trouve le prof (noms lus depuis profiles)
+      const allTeachers = await getTeachers()
+      const result = subjects.map((s) => {
         const ass = assignments.find(a => a.subject_id === s.id)
-        let teacher = null
-        if (ass?.teacher_id) {
-          const tSnap = await getDoc(doc(db, 'teachers', ass.teacher_id))
-          if (tSnap.exists()) teacher = tSnap.data()
-        }
+        const teacher = ass?.teacher_id ? (allTeachers.find(t => t.id === ass.teacher_id) ?? null) : null
         return { ...s, teacher }
-      }))
+      })
 
       return result
     },
@@ -77,6 +74,8 @@ function StudentDetail({ student, onClose }) {
     queryKey: ['student-attendance', student.id],
     queryFn: () => getMyAttendance(student.id),
   })
+
+  const subjectsList = useQuery({ queryKey: ['subjects-list'], queryFn: getSubjects })
 
   // Calcul moyenne générale
   const moyenne = (() => {
@@ -172,7 +171,7 @@ function StudentDetail({ student, onClose }) {
               {grades.data.slice(0, 10).map(g => (
                 <div key={g.id} className="flex items-center justify-between p-2 rounded-lg border border-slate-100">
                   <div>
-                    <p className="text-sm font-medium text-slate-900">{g.subject_name ?? '—'}</p>
+                    <p className="text-sm font-medium text-slate-900">{g.subject_name ?? subjectsList.data?.find(s => s.id === g.subject_id)?.name ?? '—'}</p>
                     <p className="text-xs text-slate-500">{new Date(g.date).toLocaleDateString('fr-FR')} • Coef. {g.coefficient}</p>
                   </div>
                   <span className={`font-mono font-bold px-2 py-0.5 rounded text-sm ${

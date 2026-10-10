@@ -122,7 +122,18 @@ export const updateStudent = async (id, data) => {
 // ─── TEACHERS ────────────────────────────────────────────
 export const getTeachers = async () => {
   const snap = await getDocs(query(collection(db, 'teachers'), orderBy('matricule')))
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  const data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  return Promise.all(data.map(async (t) => {
+    if (!t.profile_id) return t
+    try {
+      const pSnap = await getDoc(doc(db, 'profiles', t.profile_id))
+      if (pSnap.exists()) {
+        const p = pSnap.data()
+        return { ...t, first_name: p.first_name ?? '', last_name: p.last_name ?? '', email: p.email ?? null, phone: p.phone ?? null }
+      }
+    } catch (e) {}
+    return t
+  }))
 }
 
 export const getTeacherByProfileId = async (profileId) => {
