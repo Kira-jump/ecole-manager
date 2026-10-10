@@ -4,7 +4,7 @@ import { Plus, BookOpen, Trash2 } from 'lucide-react'
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
 import { isStudent, isTeacher, isPedagogy } from '../lib/roles'
-import { getGrades, addGrade, deleteGrade, getSubjects, getClasses, getStudents, getTeacherByProfileId, getAssignments } from '../lib/db'
+import { getGrades, addGrade, deleteGrade, getSubjects, getClasses, getStudents, getStudentByProfileId, getTeacherByProfileId, getAssignments } from '../lib/db'
 import PageHeader from '../components/ui/PageHeader'
 import Modal from '../components/ui/Modal'
 import EmptyState from '../components/ui/EmptyState'
@@ -60,6 +60,13 @@ export default function Grades() {
     queryFn: () => getAssignments(myTeacher.data.id),
   })
 
+  // Fiche élève de l'utilisateur connecté (les notes utilisent l'id students, pas l'id profil)
+  const myStudent = useQuery({
+    queryKey: ['my-student', profile?.id],
+    enabled: isStudent(role),
+    queryFn: () => getStudentByProfileId(profile.id),
+  })
+
   const subjects = useQuery({ queryKey: ['subjects-list'], queryFn: getSubjects })
   const classes = useQuery({ queryKey: ['classes-list'], queryFn: getClasses })
 
@@ -88,13 +95,15 @@ export default function Grades() {
   })
 
   const grades = useQuery({
-    queryKey: ['grades', classFilter, subjectFilter, termFilter, role],
+    queryKey: ['grades', classFilter, subjectFilter, termFilter, role, myTeacher.data?.id, myStudent.data?.id],
+    // On attend l'id du prof / de l'élève avant de lancer la requête (sinon aucun filtre)
+    enabled: isTeacher(role) ? !!myTeacher.data?.id : isStudent(role) ? !!myStudent.data?.id : true,
     queryFn: () => getGrades({
       classFilter,
       subjectFilter,
       termFilter,
       teacherId: isTeacher(role) ? myTeacher.data?.id : undefined,
-      studentId: isStudent(role) ? profile?.id : undefined,
+      studentId: isStudent(role) ? myStudent.data?.id : undefined,
     }),
   })
 
@@ -107,7 +116,10 @@ export default function Grades() {
       const student = studentsForForm.data?.find(s => s.id === form.student_id)
       await addGrade({
         student_id: form.student_id,
+        first_name: student?.first_name ?? '',
+        last_name: student?.last_name ?? '',
         subject_id: form.subject_id,
+        subject_name: getSubjectName(form.subject_id),
         teacher_id: myTeacher.data?.id ?? null,
         class_id: student?.class_id ?? null,
         value: Number(form.value),
@@ -169,7 +181,7 @@ export default function Grades() {
       <div className="card overflow-hidden">
         {grades.isLoading ? (
           <div className="flex justify-center py-12"><Spinner /></div>
-        ) : grades.data?.length === 0 ? (
+        ) : !grades.data?.length ? (
           <EmptyState icon={BookOpen} title="Aucune note" description="Les notes apparaîtront ici." />
         ) : (
           <div className="overflow-x-auto">
