@@ -100,8 +100,10 @@ export default function Classes() {
         <div className="card p-12 flex justify-center"><Spinner /></div>
       ) : classes.data?.length === 0 ? (
         <div className="card">
-          <EmptyState icon={School} title="Aucune classe" description="Crée tes premières classes."
-            action={<button onClick={openCreate} className="btn-primary"><Plus size={16} /> Nouvelle classe</button>} />
+          <EmptyState icon={School}
+            title={isTeacher(profile?.role) ? 'Aucune classe assignée' : 'Aucune classe'}
+            description={isTeacher(profile?.role) ? "Demande à l'administration de t'affecter à une classe." : 'Crée tes premières classes.'}
+            action={!isTeacher(profile?.role) && <button onClick={openCreate} className="btn-primary"><Plus size={16} /> Nouvelle classe</button>} />
         </div>
       ) : (
         <div className="space-y-6">
@@ -124,10 +126,12 @@ export default function Classes() {
                             <p className="text-xs text-slate-500">{c.school_year_label}</p>
                           </div>
                         </div>
-                        <div className="flex gap-1">
-                          <button onClick={() => openEdit(c)} className="btn-ghost p-1.5"><Pencil size={14} /></button>
-                          <button onClick={() => remove(c)} className="btn-ghost p-1.5 text-red-600 hover:bg-red-50"><Trash2 size={14} /></button>
-                        </div>
+                        {!isTeacher(profile?.role) && (
+                          <div className="flex gap-1">
+                            <button onClick={(e) => { e.stopPropagation(); openEdit(c) }} className="btn-ghost p-1.5"><Pencil size={14} /></button>
+                            <button onClick={(e) => { e.stopPropagation(); remove(c) }} className="btn-ghost p-1.5 text-red-600 hover:bg-red-50"><Trash2 size={14} /></button>
+                          </div>
+                        )}
                       </div>
                       <div className="mt-4 flex items-center justify-between text-sm">
                         <span className="text-slate-500">Effectif</span>

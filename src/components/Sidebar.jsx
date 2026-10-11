@@ -5,7 +5,7 @@ import {
   School, X, BookMarked,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
-import { isAdmin, isPedagogy, isStudent } from '../lib/roles'
+import { isAdmin, isPedagogy, isStudent, isTeacher } from '../lib/roles'
 
 function buildNav(role) {
   const items = [
@@ -14,8 +14,10 @@ function buildNav(role) {
   if (isAdmin(role)) {
     items.push({ to: '/users', label: 'Comptes & accès', icon: UserCog })
   }
-  if (isPedagogy(role)) {
+  if (isPedagogy(role) || isTeacher(role)) {
     items.push({ to: '/classes', label: 'Classes', icon: School })
+  }
+  if (isPedagogy(role)) {
     items.push({ to: '/subjects', label: 'Matières', icon: BookMarked })
   }
   if (!isStudent(role)) {

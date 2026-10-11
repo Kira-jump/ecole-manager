@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext'
  * - allow:    liste de rôles autorisés (whitelist)
  * - denyOnly: liste de rôles refusés (blacklist)
  *
- * La sécurité réelle reste dans la RLS Supabase ; ce composant
+ * La sécurité réelle reste dans les règles Firestore ; ce composant
  * sert uniquement à éviter d'afficher des écrans inutiles.
  */
 export default function ProtectedRoute({ allow, denyOnly }) {

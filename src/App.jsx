@@ -70,9 +70,12 @@ export default function App() {
           <Route path="/users" element={<Users />} />
         </Route>
 
-        <Route element={<ProtectedRoute allow={['fondateur', 'directeur_general', 'directeur_etudes', 'coordinateur']} />}>
+        <Route element={<ProtectedRoute allow={['fondateur', 'directeur_general', 'directeur_etudes', 'coordinateur', 'professeur']} />}>
           <Route path="/classes" element={<Classes />} />
           <Route path="/classes/:id" element={<ClassDetail />} />
+        </Route>
+
+        <Route element={<ProtectedRoute allow={['fondateur', 'directeur_general', 'directeur_etudes', 'coordinateur']} />}>
           <Route path="/subjects" element={<Subjects />} />
         </Route>
 

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { GraduationCap, Users, School, BookOpen, CalendarCheck, Megaphone, TrendingUp } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { isStaff, isStudent, isTeacher, roleLabel } from '../lib/roles'
-import { getDashboardStats, getAnnouncements, getStudentByProfileId, getGrades, getMyAttendance } from '../lib/db'
+import { getDashboardStats, getAnnouncements, getStudentByProfileId, getGrades, getMyAttendance, getClasses } from '../lib/db'
 import PageHeader from '../components/ui/PageHeader'
 import Spinner from '../components/ui/Spinner'
 
@@ -39,6 +39,13 @@ export default function Dashboard() {
     enabled: isStudent(role),
     queryFn: () => getStudentByProfileId(profile.id),
   })
+
+  const myClass = useQuery({
+    queryKey: ['classes-list'],
+    enabled: isStudent(role) && !!myStudent.data?.class_id,
+    queryFn: getClasses,
+  })
+  const myClassName = myClass.data?.find(c => c.id === myStudent.data?.class_id)?.name
 
   const myGrades = useQuery({
     queryKey: ['my-grades-dash', myStudent.data?.id],
@@ -76,7 +83,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <div className="card p-5">
             <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Ma classe</p>
-            <p className="text-xl font-semibold text-slate-900">{myStudent.data?.class_name ?? 'Non assigné'}</p>
+            <p className="text-xl font-semibold text-slate-900">{myClassName ?? 'Non assigné'}</p>
             <p className="text-xs text-slate-400 mt-1">Matricule : {myStudent.data?.matricule}</p>
           </div>
           <StatCard icon={BookOpen} label="Notes enregistrées" value={myGrades.data?.length ?? 0} color="bg-amber-100 text-amber-700" />

@@ -183,14 +183,16 @@ export const getAttendanceForClass = async (classId, date) => {
   const students = await getStudents(classId)
   if (!students.length) return []
   const ids = students.map(s => s.id)
-  const q = query(
+  // Firestore limite 'in' à 30 valeurs : on découpe en paquets
+  const chunks = []
+  for (let i = 0; i < ids.length; i += 30) chunks.push(ids.slice(i, i + 30))
+  const snaps = await Promise.all(chunks.map(chunk => getDocs(query(
     collection(db, 'attendance'),
     where('date', '==', date),
-    where('student_id', 'in', ids.slice(0, 30))
-  )
-  const snap = await getDocs(q)
+    where('student_id', 'in', chunk)
+  ))))
   const attMap = {}
-  snap.docs.forEach(d => { attMap[d.data().student_id] = { id: d.id, ...d.data() } })
+  snaps.forEach(snap => snap.docs.forEach(d => { attMap[d.data().student_id] = { id: d.id, ...d.data() } }))
   return students.map(s => ({ ...s, attendance: attMap[s.id] ?? null }))
 }
 
@@ -228,14 +230,13 @@ export const justifyAbsence = async (studentId, date, reason, justifiedBy) => {
 }
 
 export const getMyAttendance = async (studentId) => {
-  const q = query(
-    collection(db, 'attendance'),
-    where('student_id', '==', studentId),
-    orderBy('date', 'desc'),
-    limit(100)
-  )
+  // Pas d'orderBy côté Firestore (évite un index composite) : le tri se fait ici
+  const q = query(collection(db, 'attendance'), where('student_id', '==', studentId))
   const snap = await getDocs(q)
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
+    .slice(0, 100)
 }
 
 // ─── ANNOUNCEMENTS ───────────────────────────────────────
