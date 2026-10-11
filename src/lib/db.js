@@ -1,7 +1,7 @@
 import {
   collection, doc, getDoc, getDocs, addDoc, updateDoc,
   deleteDoc, query, where, orderBy, limit, setDoc,
-  serverTimestamp, getCountFromServer,
+  serverTimestamp, getCountFromServer, writeBatch,
 } from 'firebase/firestore'
 import { db } from './firebase'
 
@@ -173,6 +173,13 @@ export const getGrades = async ({ classFilter, subjectFilter, termFilter, studen
 
 export const addGrade = async (data) => {
   await addDoc(collection(db, 'grades'), { ...data, created_at: serverTimestamp() })
+}
+
+// Enregistre plusieurs notes d'un coup (tout ou rien)
+export const addGradesBulk = async (list) => {
+  const batch = writeBatch(db)
+  list.forEach(g => batch.set(doc(collection(db, 'grades')), { ...g, created_at: serverTimestamp() }))
+  await batch.commit()
 }
 
 export const deleteGrade = async (id) => {

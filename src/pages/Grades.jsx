@@ -1,10 +1,10 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, BookOpen, Trash2 } from 'lucide-react'
+import { Plus, BookOpen, Trash2, ClipboardList } from 'lucide-react'
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
 import { isStudent, isTeacher, isPedagogy } from '../lib/roles'
-import { getGrades, addGrade, deleteGrade, getSubjects, getStudents, getStudentByProfileId, getTeacherByProfileId, getAssignments } from '../lib/db'
+import { getGrades, addGrade, addGradesBulk, deleteGrade, getSubjects, getStudents, getStudentByProfileId, getTeacherByProfileId, getAssignments } from '../lib/db'
 import { useMyClasses } from '../lib/useMyClasses'
 import PageHeader from '../components/ui/PageHeader'
 import Modal from '../components/ui/Modal'
@@ -41,6 +41,15 @@ export default function Grades() {
   const [classFilter, setClassFilter] = useState('')
   const [subjectFilter, setSubjectFilter] = useState('')
   const [termFilter, setTermFilter] = useState('')
+  // Saisie rapide par classe
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkSaving, setBulkSaving] = useState(false)
+  const [bulkValues, setBulkValues] = useState({})
+  const [bulk, setBulk] = useState({
+    class_id: '', subject_id: '', coefficient: 1,
+    evaluation: 'devoir', term: 'trimestre_1',
+    date: new Date().toISOString().slice(0, 10),
+  })
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState({
     student_id: '', subject_id: '', value: '', coefficient: 1,
@@ -119,6 +128,88 @@ export default function Grades() {
   const getSubjectName = (id) => subjects.data?.find(s => s.id === id)?.name ?? '—'
   const getClassName = (id) => classes.data?.find(c => c.id === id)?.name ?? '—'
 
+  // ── Saisie rapide par classe ──
+  const bulkSubjects = useMemo(() => {
+    if (isTeacher(role)) {
+      const ids = new Set((myAssignments.data ?? []).filter(a => a.class_id === bulk.class_id).map(a => a.subject_id))
+      return (subjects.data ?? []).filter(s => ids.has(s.id))
+    }
+    return subjects.data ?? []
+  }, [role, subjects.data, myAssignments.data, bulk.class_id])
+
+  // S'il n'y a qu'une seule matière possible, elle est choisie automatiquement
+  const bulkSubjectId = bulk.subject_id || (bulkSubjects.length === 1 ? bulkSubjects[0].id : '')
+
+  const bulkStudents = useQuery({
+    queryKey: ['students-bulk', bulk.class_id],
+    enabled: bulkOpen && !!bulk.class_id,
+    queryFn: async () => {
+      const list = await getStudents(bulk.class_id)
+      return list.sort((a, b) =>
+        (a.last_name ?? '').localeCompare(b.last_name ?? '') || (a.first_name ?? '').localeCompare(b.first_name ?? ''))
+    },
+  })
+
+  const filledCount = Object.values(bulkValues).filter(v => String(v).trim() !== '').length
+
+  const openBulk = () => {
+    setBulkValues({})
+    setBulk(b => ({ ...b, class_id: b.class_id || classes.data?.[0]?.id || '', subject_id: '' }))
+    setBulkOpen(true)
+  }
+
+  const changeBulkClass = (class_id) => {
+    setBulkValues({})
+    setBulk(b => ({ ...b, class_id, subject_id: '' }))
+  }
+
+  // Touche Entrée = passer à l'élève suivant
+  const focusNext = (e) => {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    const inputs = Array.from(document.querySelectorAll('[data-bulk-input]'))
+    inputs[inputs.indexOf(e.target) + 1]?.focus()
+  }
+
+  const saveBulk = async () => {
+    if (!bulk.class_id || !bulkSubjectId) { toast.error('Choisis la classe et la matière'); return }
+    const rows = []
+    for (const s of bulkStudents.data ?? []) {
+      const raw = String(bulkValues[s.id] ?? '').trim().replace(',', '.')
+      if (raw === '') continue
+      const v = Number(raw)
+      if (Number.isNaN(v) || v < 0 || v > 20) {
+        toast.error(`Note invalide pour ${s.first_name} ${s.last_name} (entre 0 et 20)`)
+        return
+      }
+      rows.push({ student: s, value: v })
+    }
+    if (!rows.length) { toast.error('Saisis au moins une note'); return }
+    setBulkSaving(true)
+    try {
+      await addGradesBulk(rows.map(({ student, value }) => ({
+        student_id: student.id,
+        first_name: student.first_name ?? '',
+        last_name: student.last_name ?? '',
+        subject_id: bulkSubjectId,
+        subject_name: getSubjectName(bulkSubjectId),
+        teacher_id: myTeacher.data?.id ?? null,
+        class_id: bulk.class_id,
+        value,
+        coefficient: Number(bulk.coefficient) || 1,
+        evaluation: bulk.evaluation,
+        term: bulk.term,
+        date: bulk.date,
+        comment: null,
+      })))
+      toast.success(`${rows.length} note${rows.length > 1 ? 's' : ''} enregistrée${rows.length > 1 ? 's' : ''}`)
+      setBulkOpen(false)
+      setBulkValues({})
+      qc.invalidateQueries({ queryKey: ['grades'] })
+    } catch (err) { toast.error(err?.message ?? 'Échec') }
+    finally { setBulkSaving(false) }
+  }
+
   const submit = async (e) => {
     e.preventDefault()
     try {
@@ -162,9 +253,14 @@ export default function Grades() {
         title="Notes"
         description={isStudent(role) ? 'Mes notes' : 'Saisie et consultation des notes'}
         actions={canAdd && (
-          <button onClick={() => setOpen(true)} className="btn-primary">
-            <Plus size={16} /> Nouvelle note
-          </button>
+          <>
+            <button onClick={openBulk} className="btn-primary">
+              <ClipboardList size={16} /> Saisie par classe
+            </button>
+            <button onClick={() => setOpen(true)} className="btn-secondary">
+              <Plus size={16} /> Une note
+            </button>
+          </>
         )}
       />
 
@@ -264,7 +360,7 @@ export default function Grades() {
             <select className="input" required value={form.student_id} onChange={e => setForm({ ...form, student_id: e.target.value })}>
               <option value="">— Choisir —</option>
               {studentsForForm.data?.map(s => (
-                <option key={s.id} value={s.id}>{s.first_name} {s.last_name} ({getClassName(s.class_id)})</option>
+                <option key={s.id} value={s.id}>{s.first_name} {s.last_name} · {s.matricule} ({getClassName(s.class_id)})</option>
               ))}
             </select>
             {isTeacher(role) && !form.subject_id && <p className="text-xs text-slate-400 mt-1">Choisis d'abord une matière.</p>}
@@ -286,6 +382,84 @@ export default function Grades() {
           <div><label className="label">Commentaire</label>
             <textarea className="input" rows="2" value={form.comment} onChange={e => setForm({ ...form, comment: e.target.value })} /></div>
         </form>
+      </Modal>
+
+      {/* Saisie rapide : une évaluation, toute la classe */}
+      <Modal open={bulkOpen} onClose={() => setBulkOpen(false)} title="Saisie par classe" size="lg"
+        footer={
+          <>
+            <span className="mr-auto self-center text-xs text-slate-500">
+              {filledCount} note{filledCount > 1 ? 's' : ''} à enregistrer
+            </span>
+            <button onClick={() => setBulkOpen(false)} className="btn-secondary">Annuler</button>
+            <button onClick={saveBulk} disabled={bulkSaving || filledCount === 0} className="btn-primary">
+              {bulkSaving ? 'Enregistrement…' : 'Enregistrer tout'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div><label className="label">Classe *</label>
+              <select className="input" value={bulk.class_id} onChange={e => changeBulkClass(e.target.value)}>
+                <option value="">— Choisir —</option>
+                {classes.data?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select></div>
+            <div><label className="label">Matière *</label>
+              <select className="input" value={bulkSubjectId} onChange={e => setBulk({ ...bulk, subject_id: e.target.value })}>
+                <option value="">— Choisir —</option>
+                {bulkSubjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select></div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div><label className="label">Type</label>
+              <select className="input" value={bulk.evaluation} onChange={e => setBulk({ ...bulk, evaluation: e.target.value })}>
+                {EVAL_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select></div>
+            <div><label className="label">Trimestre</label>
+              <select className="input" value={bulk.term} onChange={e => setBulk({ ...bulk, term: e.target.value })}>
+                {TERMS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select></div>
+            <div><label className="label">Date</label>
+              <input type="date" className="input" value={bulk.date} onChange={e => setBulk({ ...bulk, date: e.target.value })} /></div>
+            <div><label className="label">Coef.</label>
+              <input type="number" step="0.5" min="0.5" className="input" value={bulk.coefficient} onChange={e => setBulk({ ...bulk, coefficient: e.target.value })} /></div>
+          </div>
+
+          {!bulk.class_id ? (
+            <p className="text-sm text-slate-400 text-center py-6">Choisis une classe pour afficher les élèves.</p>
+          ) : bulkStudents.isLoading ? (
+            <div className="flex justify-center py-8"><Spinner /></div>
+          ) : !bulkStudents.data?.length ? (
+            <p className="text-sm text-slate-400 text-center py-6">Aucun élève dans cette classe.</p>
+          ) : (
+            <div>
+              <p className="text-xs text-slate-500 mb-2">Laisse vide les élèves sans note (absents, par exemple).</p>
+              <div className="border border-slate-100 rounded-xl divide-y divide-slate-100">
+                {bulkStudents.data.map((s, i) => (
+                  <div key={s.id} className="flex items-center gap-3 px-3 py-2">
+                    <span className="text-xs text-slate-400 w-6 text-right shrink-0">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-900 truncate">{s.last_name} {s.first_name}</p>
+                      <p className="text-xs text-slate-500">{s.matricule}</p>
+                    </div>
+                    <input
+                      data-bulk-input
+                      type="text"
+                      inputMode="decimal"
+                      enterKeyHint="next"
+                      placeholder="/20"
+                      className="input w-20 text-center shrink-0"
+                      value={bulkValues[s.id] ?? ''}
+                      onChange={e => { const val = e.target.value; setBulkValues(v => ({ ...v, [s.id]: val })) }}
+                      onKeyDown={focusNext}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   )
