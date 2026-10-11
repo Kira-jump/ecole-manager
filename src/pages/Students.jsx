@@ -3,8 +3,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { GraduationCap, Filter, Pencil } from 'lucide-react'
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
-import { isPedagogy } from '../lib/roles'
-import { getStudents, getClasses, updateStudent } from '../lib/db'
+import { isPedagogy, isTeacher } from '../lib/roles'
+import { getStudents, updateStudent } from '../lib/db'
+import { useMyClasses } from '../lib/useMyClasses'
 import PageHeader from '../components/ui/PageHeader'
 import Modal from '../components/ui/Modal'
 import EmptyState from '../components/ui/EmptyState'
@@ -20,10 +21,14 @@ export default function Students() {
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({})
 
-  const classes = useQuery({ queryKey: ['classes-list'], queryFn: getClasses })
+  const classes = useMyClasses()
+  const isT = isTeacher(profile?.role)
+  // Un prof ne voit que les élèves de ses classes
+  const classIds = isT ? (classes.data ?? []).map(c => c.id) : null
   const students = useQuery({
-    queryKey: ['students', classFilter],
-    queryFn: () => getStudents(classFilter),
+    queryKey: ['students', classFilter, classIds?.join(',') ?? 'all'],
+    enabled: !isT || !!classes.data,
+    queryFn: () => getStudents(classFilter, classIds),
   })
 
   const filtered = (students.data ?? []).filter(s => {
@@ -57,7 +62,7 @@ export default function Students() {
 
   return (
     <div>
-      <PageHeader title="Élèves" description="Liste de tous les élèves inscrits" />
+      <PageHeader title="Élèves" description={isT ? 'Élèves de tes classes' : 'Liste de tous les élèves inscrits'} />
 
       <div className="card">
         <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row gap-3">

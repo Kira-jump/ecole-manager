@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { GraduationCap, Users, School, BookOpen, CalendarCheck, Megaphone, TrendingUp } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { isStaff, isStudent, isTeacher, roleLabel } from '../lib/roles'
-import { getDashboardStats, getAnnouncements, getStudentByProfileId, getGrades, getMyAttendance, getClasses } from '../lib/db'
+import { getDashboardStats, getAnnouncements, getStudentByProfileId, getGrades, getMyAttendance, getClasses, getTeacherByProfileId, getAssignments, countStudentsInClasses } from '../lib/db'
+import { useMyClasses } from '../lib/useMyClasses'
 import PageHeader from '../components/ui/PageHeader'
 import Spinner from '../components/ui/Spinner'
 
@@ -25,7 +26,29 @@ export default function Dashboard() {
   const { profile } = useAuth()
   const role = profile?.role
 
-  const stats = useQuery({ queryKey: ['dashboard-stats'], queryFn: getDashboardStats, enabled: isStaff(role) || isTeacher(role) })
+  const stats = useQuery({ queryKey: ['dashboard-stats'], queryFn: getDashboardStats, enabled: isStaff(role) })
+  // Stats du prof : limitées à ses propres classes
+  const myClasses = useMyClasses({ enabled: isTeacher(role) })
+  const myTeacher = useQuery({
+    queryKey: ['my-teacher', profile?.id],
+    enabled: isTeacher(role),
+    queryFn: () => getTeacherByProfileId(profile.id),
+  })
+  const myAssignments = useQuery({
+    queryKey: ['my-assignments', myTeacher.data?.id],
+    enabled: !!myTeacher.data?.id,
+    queryFn: () => getAssignments(myTeacher.data.id),
+  })
+  const teacherClassIds = (myClasses.data ?? []).map(c => c.id)
+  const teacherStudents = useQuery({
+    queryKey: ['teacher-student-count', teacherClassIds.join(',')],
+    enabled: isTeacher(role) && !!myClasses.data,
+    queryFn: () => countStudentsInClasses(teacherClassIds),
+  })
+  const teacherSubjectCount = myAssignments.data
+    ? new Set(myAssignments.data.map(a => a.subject_id)).size
+    : undefined
+
   const announcements = useQuery({
     queryKey: ['recent-announcements'],
     queryFn: async () => {
@@ -70,12 +93,20 @@ export default function Dashboard() {
     <div>
       <PageHeader title={`${greeting}, ${profile?.first_name} 👋`} description={`Bienvenue dans ton espace ${roleLabel(role)}`} />
 
-      {(isStaff(role) || isTeacher(role)) && (
+      {isStaff(role) && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <StatCard icon={GraduationCap} label="Élèves" value={stats.data?.students} color="bg-blue-100 text-blue-700" />
           <StatCard icon={Users} label="Enseignants" value={stats.data?.teachers} color="bg-purple-100 text-purple-700" />
           <StatCard icon={School} label="Classes" value={stats.data?.classes} color="bg-emerald-100 text-emerald-700" />
           <StatCard icon={BookOpen} label="Matières" value={stats.data?.subjects} color="bg-amber-100 text-amber-700" />
+        </div>
+      )}
+
+      {isTeacher(role) && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <StatCard icon={School} label="Mes classes" value={myClasses.data?.length} color="bg-emerald-100 text-emerald-700" />
+          <StatCard icon={GraduationCap} label="Mes élèves" value={teacherStudents.data} color="bg-blue-100 text-blue-700" />
+          <StatCard icon={BookOpen} label="Mes matières" value={teacherSubjectCount} color="bg-amber-100 text-amber-700" />
         </div>
       )}
 

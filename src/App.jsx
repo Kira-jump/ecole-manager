@@ -81,6 +81,9 @@ export default function App() {
 
         <Route element={<ProtectedRoute denyOnly={['eleve']} />}>
           <Route path="/students" element={<Students />} />
+        </Route>
+
+        <Route element={<ProtectedRoute denyOnly={['eleve', 'professeur']} />}>
           <Route path="/teachers" element={<Teachers />} />
         </Route>
 

@@ -4,7 +4,8 @@ import { Calendar, Check, X, Clock, FileCheck } from 'lucide-react'
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
 import { isStudent, isTeacher, isStaff, canManageDiscipline } from '../lib/roles'
-import { getClasses, getAttendanceForClass, setAttendance, justifyAbsence, getMyAttendance, getStudentByProfileId } from '../lib/db'
+import { getAttendanceForClass, setAttendance, justifyAbsence, getMyAttendance, getStudentByProfileId } from '../lib/db'
+import { useMyClasses } from '../lib/useMyClasses'
 import PageHeader from '../components/ui/PageHeader'
 import EmptyState from '../components/ui/EmptyState'
 import Spinner from '../components/ui/Spinner'
@@ -24,7 +25,7 @@ export default function Attendance() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
   const [classId, setClassId] = useState('')
 
-  const classes = useQuery({ queryKey: ['classes-list'], queryFn: getClasses })
+  const classes = useMyClasses()
 
   useEffect(() => {
     if (!classId && classes.data?.length > 0 && !isStudent(role)) {

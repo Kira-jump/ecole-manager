@@ -4,7 +4,8 @@ import { Plus, BookOpen, Trash2 } from 'lucide-react'
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
 import { isStudent, isTeacher, isPedagogy } from '../lib/roles'
-import { getGrades, addGrade, deleteGrade, getSubjects, getClasses, getStudents, getStudentByProfileId, getTeacherByProfileId, getAssignments } from '../lib/db'
+import { getGrades, addGrade, deleteGrade, getSubjects, getStudents, getStudentByProfileId, getTeacherByProfileId, getAssignments } from '../lib/db'
+import { useMyClasses } from '../lib/useMyClasses'
 import PageHeader from '../components/ui/PageHeader'
 import Modal from '../components/ui/Modal'
 import EmptyState from '../components/ui/EmptyState'
@@ -68,7 +69,7 @@ export default function Grades() {
   })
 
   const subjects = useQuery({ queryKey: ['subjects-list'], queryFn: getSubjects })
-  const classes = useQuery({ queryKey: ['classes-list'], queryFn: getClasses })
+  const classes = useMyClasses()
 
   const availableSubjects = useMemo(() => {
     if (isTeacher(role) && myAssignments.data) {
@@ -94,17 +95,25 @@ export default function Grades() {
     },
   })
 
+  // Un prof voit les notes de ses couples classe + matière (ses affectations)
+  const assignKey = (myAssignments.data ?? []).map(a => `${a.class_id}:${a.subject_id}`).sort().join('|')
+
   const grades = useQuery({
-    queryKey: ['grades', classFilter, subjectFilter, termFilter, role, myTeacher.data?.id, myStudent.data?.id],
-    // On attend l'id du prof / de l'élève avant de lancer la requête (sinon aucun filtre)
-    enabled: isTeacher(role) ? !!myTeacher.data?.id : isStudent(role) ? !!myStudent.data?.id : true,
-    queryFn: () => getGrades({
-      classFilter,
-      subjectFilter,
-      termFilter,
-      teacherId: isTeacher(role) ? myTeacher.data?.id : undefined,
-      studentId: isStudent(role) ? myStudent.data?.id : undefined,
-    }),
+    queryKey: ['grades', classFilter, subjectFilter, termFilter, role, assignKey, myStudent.data?.id],
+    // On attend les affectations du prof / la fiche de l'élève avant de lancer la requête (sinon aucun filtre)
+    enabled: isTeacher(role) ? !!myAssignments.data : isStudent(role) ? !!myStudent.data?.id : true,
+    queryFn: async () => {
+      const list = await getGrades({
+        classFilter,
+        subjectFilter,
+        termFilter,
+        studentId: isStudent(role) ? myStudent.data?.id : undefined,
+      })
+      if (isTeacher(role)) {
+        return list.filter(g => (myAssignments.data ?? []).some(a => a.class_id === g.class_id && a.subject_id === g.subject_id))
+      }
+      return list
+    },
   })
 
   const getSubjectName = (id) => subjects.data?.find(s => s.id === id)?.name ?? '—'

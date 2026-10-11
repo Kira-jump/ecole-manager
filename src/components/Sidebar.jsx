@@ -22,6 +22,8 @@ function buildNav(role) {
   }
   if (!isStudent(role)) {
     items.push({ to: '/students', label: 'Élèves', icon: GraduationCap })
+  }
+  if (!isStudent(role) && !isTeacher(role)) {
     items.push({ to: '/teachers', label: 'Enseignants', icon: Users })
   }
   items.push({ to: '/grades', label: 'Notes', icon: BookOpen })

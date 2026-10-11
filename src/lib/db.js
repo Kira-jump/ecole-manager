@@ -89,11 +89,12 @@ export const deleteSubject = async (id) => {
 }
 
 // ─── STUDENTS ────────────────────────────────────────────
-export const getStudents = async (classFilter = '') => {
+export const getStudents = async (classFilter = '', classIds = null) => {
   let q = query(collection(db, 'students'), orderBy('matricule'))
   const snap = await getDocs(q)
   let data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
   if (classFilter) data = data.filter(s => s.class_id === classFilter)
+  if (classIds) data = data.filter(s => classIds.includes(s.class_id))
 
   const enriched = await Promise.all(data.map(async (s) => {
     if (!s.profile_id) return s
@@ -258,6 +259,16 @@ export const togglePinned = async (id, pinned) => {
 }
 
 // ─── STATS DASHBOARD ─────────────────────────────────────
+export const countStudentsInClasses = async (classIds) => {
+  if (!classIds.length) return 0
+  const chunks = []
+  for (let i = 0; i < classIds.length; i += 30) chunks.push(classIds.slice(i, i + 30))
+  const snaps = await Promise.all(chunks.map(ch =>
+    getCountFromServer(query(collection(db, 'students'), where('class_id', 'in', ch)))
+  ))
+  return snaps.reduce((n, s) => n + s.data().count, 0)
+}
+
 export const getDashboardStats = async () => {
   const [students, teachers, classes, subjects] = await Promise.all([
     getCountFromServer(collection(db, 'students')),
