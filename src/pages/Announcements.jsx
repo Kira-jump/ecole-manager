@@ -10,13 +10,20 @@ import Modal from '../components/ui/Modal'
 import EmptyState from '../components/ui/EmptyState'
 import Spinner from '../components/ui/Spinner'
 
+// Destinataires : un choix clair (l'administration voit toujours tout)
+const AUDIENCES = [
+  { label: 'Tout le monde', roles: [] },
+  { label: 'Élèves uniquement', roles: ['eleve'] },
+  { label: 'Professeurs uniquement', roles: ['professeur'] },
+]
+
 export default function Announcements() {
   const toast = useToast()
   const qc = useQueryClient()
   const { profile } = useAuth()
   const canManage = isStaff(profile?.role)
   const [open, setOpen] = useState(false)
-  const [form, setForm] = useState({ title: '', content: '', pinned: false, audience: ['eleve', 'professeur'] })
+  const [form, setForm] = useState({ title: '', content: '', pinned: false, audience: [] })
 
   const announcements = useQuery({
     queryKey: ['announcements-list'],
@@ -37,7 +44,7 @@ export default function Announcements() {
       await addAnnouncement({ title: form.title, content: form.content, author_id: profile.id, author_name: `${profile.first_name} ${profile.last_name}`, audience: form.audience, pinned: form.pinned })
       toast.success('Annonce publiée')
       setOpen(false)
-      setForm({ title: '', content: '', pinned: false, audience: ['eleve', 'professeur'] })
+      setForm({ title: '', content: '', pinned: false, audience: [] })
       qc.invalidateQueries({ queryKey: ['announcements-list'] })
     } catch (err) { toast.error(err?.message ?? 'Échec') }
   }
@@ -101,9 +108,12 @@ export default function Announcements() {
                 )}
               </div>
               <p className="text-sm text-slate-700 whitespace-pre-wrap">{a.content}</p>
-              {a.audience?.length > 0 && (
-                <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-1">
-                  {a.audience.map(r => <span key={r} className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">{roleLabel(r)}</span>)}
+              {canManage && (
+                <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center gap-1">
+                  <span className="text-[10px] text-slate-400 mr-1">Destinataires :</span>
+                  {a.audience?.length > 0
+                    ? a.audience.map(r => <span key={r} className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">{roleLabel(r)}</span>)
+                    : <span className="text-[10px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded">Tout le monde</span>}
                 </div>
               )}
             </article>
@@ -121,13 +131,17 @@ export default function Announcements() {
             <textarea className="input" rows="5" required value={form.content} onChange={e => setForm({ ...form, content: e.target.value })} /></div>
           <div><label className="label">Destinataires</label>
             <div className="flex flex-wrap gap-2">
-              {ROLE_LIST.map(r => (
-                <button key={r} type="button" onClick={() => toggleAudience(r)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${form.audience.includes(r) ? 'bg-brand-700 text-white border-brand-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                  {ROLES[r].label}
-                </button>
-              ))}
+              {AUDIENCES.map(opt => {
+                const active = JSON.stringify(form.audience) === JSON.stringify(opt.roles)
+                return (
+                  <button key={opt.label} type="button" onClick={() => setForm({ ...form, audience: opt.roles })}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${active ? 'bg-brand-700 text-white border-brand-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                    {opt.label}
+                  </button>
+                )
+              })}
             </div>
+            <p className="text-xs text-slate-400 mt-1">L'administration voit toutes les annonces.</p>
           </div>
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input type="checkbox" checked={form.pinned} onChange={e => setForm({ ...form, pinned: e.target.checked })} className="rounded" />

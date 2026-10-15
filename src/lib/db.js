@@ -182,6 +182,24 @@ export const addGradesBulk = async (list) => {
   await batch.commit()
 }
 
+// Fiche de notes : matières affectées à une classe, notes d'un mois, enregistrement groupé
+export const getClassAssignments = async (classId) => {
+  const snap = await getDocs(query(collection(db, 'teaching_assignments'), where('class_id', '==', classId)))
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+}
+
+export const getSheetGrades = async (classId, month) => {
+  const snap = await getDocs(query(collection(db, 'grades'), where('class_id', '==', classId), where('month', '==', month)))
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+}
+
+export const saveGradeSheet = async ({ sets, deletes }) => {
+  const batch = writeBatch(db)
+  sets.forEach(({ id, data }) => batch.set(doc(db, 'grades', id), { ...data, updated_at: serverTimestamp() }, { merge: true }))
+  deletes.forEach(id => batch.delete(doc(db, 'grades', id)))
+  await batch.commit()
+}
+
 export const deleteGrade = async (id) => {
   await deleteDoc(doc(db, 'grades', id))
 }

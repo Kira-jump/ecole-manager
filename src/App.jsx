@@ -11,6 +11,7 @@ import Students from './pages/Students'
 import Teachers from './pages/Teachers'
 import Subjects from './pages/Subjects'
 import Grades from './pages/Grades'
+import GradeSheet from './pages/GradeSheet'
 import Attendance from './pages/Attendance'
 import Announcements from './pages/Announcements'
 import Settings from './pages/Settings'
@@ -73,6 +74,7 @@ export default function App() {
         <Route element={<ProtectedRoute allow={['fondateur', 'directeur_general', 'directeur_etudes', 'coordinateur', 'professeur']} />}>
           <Route path="/classes" element={<Classes />} />
           <Route path="/classes/:id" element={<ClassDetail />} />
+          <Route path="/grade-sheet" element={<GradeSheet />} />
         </Route>
 
         <Route element={<ProtectedRoute allow={['fondateur', 'directeur_general', 'directeur_etudes', 'coordinateur']} />}>

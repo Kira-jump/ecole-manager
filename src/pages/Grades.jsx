@@ -1,22 +1,18 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, BookOpen, Trash2, ClipboardList } from 'lucide-react'
+import { Plus, BookOpen, Trash2, ClipboardList, Table2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
 import { isStudent, isTeacher, isPedagogy } from '../lib/roles'
 import { getGrades, addGrade, addGradesBulk, deleteGrade, getSubjects, getStudents, getStudentByProfileId, getTeacherByProfileId, getAssignments } from '../lib/db'
 import { useMyClasses } from '../lib/useMyClasses'
 import { computeAverages } from '../lib/averages'
+import { TERMS, termsForLevel } from '../lib/terms'
 import PageHeader from '../components/ui/PageHeader'
 import Modal from '../components/ui/Modal'
 import EmptyState from '../components/ui/EmptyState'
 import Spinner from '../components/ui/Spinner'
-
-const TERMS = [
-  { value: 'trimestre_1', label: 'Trimestre 1' },
-  { value: 'trimestre_2', label: 'Trimestre 2' },
-  { value: 'trimestre_3', label: 'Trimestre 3' },
-]
 
 const EVAL_TYPES = [
   { value: 'devoir', label: 'Devoir' },
@@ -246,6 +242,9 @@ export default function Grades() {
     } catch (err) { toast.error(err.message) }
   }
 
+  // Élève : onglets Trimestres (primaire) ou Semestres (collège / lycée)
+  const myLevel = classes.data?.find(c => c.id === myStudent.data?.class_id)?.level
+  const studentTerms = termsForLevel(myLevel)
   const averages = computeAverages(grades.data ?? [], subjects.data)
   const canAdd = isTeacher(role) || isPedagogy(role)
 
@@ -256,7 +255,10 @@ export default function Grades() {
         description={isStudent(role) ? 'Mes notes' : 'Saisie et consultation des notes'}
         actions={canAdd && (
           <>
-            <button onClick={openBulk} className="btn-primary">
+            <Link to="/grade-sheet" className="btn-primary">
+              <Table2 size={16} /> Fiche de notes
+            </Link>
+            <button onClick={openBulk} className="btn-secondary">
               <ClipboardList size={16} /> Saisie par classe
             </button>
             <button onClick={() => setOpen(true)} className="btn-secondary">
@@ -269,7 +271,7 @@ export default function Grades() {
       {isStudent(role) && (
         <div className="card p-5 mb-4">
           <div className="flex flex-wrap gap-2 mb-4">
-            {[{ value: '', label: 'Année' }, ...TERMS.map(t => ({ value: t.value, label: t.label.replace('Trimestre ', 'T') }))].map(t => (
+            {[{ value: '', label: 'Année' }, ...studentTerms.map(t => ({ value: t.value, label: t.label.replace('Trimestre ', 'T').replace('Semestre ', 'S') }))].map(t => (
               <button key={t.value} onClick={() => setTermFilter(t.value)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${termFilter === t.value ? 'bg-brand-700 text-white border-brand-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
                 {t.label}
@@ -353,7 +355,7 @@ export default function Grades() {
                     <td className="table-td">{getSubjectName(g.subject_id)}</td>
                     <td className="table-td text-sm">
                       <span className="text-xs bg-slate-100 px-2 py-0.5 rounded">
-                        {EVAL_TYPES.find(e => e.value === g.evaluation)?.label}
+                        {EVAL_TYPES.find(e => e.value === g.evaluation)?.label ?? (g.evaluation === 'mensuelle' ? 'Mensuelle' : '')}
                       </span>
                     </td>
                     <td className="table-td text-sm">{TERMS.find(t => t.value === g.term)?.label}</td>
