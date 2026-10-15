@@ -17,5 +17,7 @@ export const isAdmin = (role) => ['fondateur', 'directeur_general'].includes(rol
 export const isStaff = (role) => ['fondateur', 'directeur_general', 'directeur_etudes', 'coordinateur', 'surveillant_general', 'comptable'].includes(role)
 export const isPedagogy = (role) => ['fondateur', 'directeur_general', 'directeur_etudes', 'coordinateur'].includes(role)
 export const isTeacher = (role) => role === 'professeur'
+// Une annonce est visible si l'utilisateur est du staff, ou si son rôle fait partie de l'audience (vide = tout le monde)
+export const canSeeAnnouncement = (a, role) => isStaff(role) || !a.audience?.length || a.audience.includes(role)
 export const isStudent = (role) => role === 'eleve'
 export const canManageDiscipline = (role) => ['fondateur', 'directeur_general', 'surveillant_general'].includes(role)

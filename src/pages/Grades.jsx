@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { isStudent, isTeacher, isPedagogy } from '../lib/roles'
 import { getGrades, addGrade, addGradesBulk, deleteGrade, getSubjects, getStudents, getStudentByProfileId, getTeacherByProfileId, getAssignments } from '../lib/db'
 import { useMyClasses } from '../lib/useMyClasses'
+import { computeAverages } from '../lib/averages'
 import PageHeader from '../components/ui/PageHeader'
 import Modal from '../components/ui/Modal'
 import EmptyState from '../components/ui/EmptyState'
@@ -245,6 +246,7 @@ export default function Grades() {
     } catch (err) { toast.error(err.message) }
   }
 
+  const averages = computeAverages(grades.data ?? [], subjects.data)
   const canAdd = isTeacher(role) || isPedagogy(role)
 
   return (
@@ -263,6 +265,41 @@ export default function Grades() {
           </>
         )}
       />
+
+      {isStudent(role) && (
+        <div className="card p-5 mb-4">
+          <div className="flex flex-wrap gap-2 mb-4">
+            {[{ value: '', label: 'Année' }, ...TERMS.map(t => ({ value: t.value, label: t.label.replace('Trimestre ', 'T') }))].map(t => (
+              <button key={t.value} onClick={() => setTermFilter(t.value)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${termFilter === t.value ? 'bg-brand-700 text-white border-brand-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {averages.rows.length === 0 ? (
+            <p className="text-sm text-slate-500">Pas encore de moyenne pour cette période.</p>
+          ) : (
+            <>
+              <div className="mb-4">
+                <p className="text-xs text-slate-500 uppercase tracking-wider">Moyenne générale</p>
+                <p className="text-3xl font-bold text-slate-900">{averages.general.toFixed(2)}<span className="text-base font-medium text-slate-400"> /20</span></p>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {averages.rows.map(r => (
+                  <div key={r.subject_id} className="flex items-center justify-between gap-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-900 truncate">{r.name}</p>
+                      <p className="text-xs text-slate-500">{r.count} note{r.count > 1 ? 's' : ''} · coef {r.coef}</p>
+                    </div>
+                    <GradeBadge value={r.average} />
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-slate-400 mt-3">Moyennes indicatives, calculées à partir des notes saisies.</p>
+            </>
+          )}
+        </div>
+      )}
 
       {!isStudent(role) && (
         <div className="card p-4 mb-4">

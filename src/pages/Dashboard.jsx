@@ -2,9 +2,10 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { GraduationCap, Users, School, BookOpen, CalendarCheck, Megaphone, TrendingUp } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
-import { isStaff, isStudent, isTeacher, roleLabel } from '../lib/roles'
-import { getDashboardStats, getAnnouncements, getStudentByProfileId, getGrades, getMyAttendance, getClasses, getTeacherByProfileId, getAssignments, countStudentsInClasses } from '../lib/db'
+import { isStaff, isStudent, isTeacher, roleLabel, canSeeAnnouncement } from '../lib/roles'
+import { getDashboardStats, getAnnouncements, getStudentByProfileId, getGrades, getMyAttendance, getClasses, getTeacherByProfileId, getAssignments, countStudentsInClasses, getSubjects } from '../lib/db'
 import { useMyClasses } from '../lib/useMyClasses'
+import { computeAverages } from '../lib/averages'
 import PageHeader from '../components/ui/PageHeader'
 import Spinner from '../components/ui/Spinner'
 
@@ -50,10 +51,10 @@ export default function Dashboard() {
     : undefined
 
   const announcements = useQuery({
-    queryKey: ['recent-announcements'],
+    queryKey: ['recent-announcements', role],
     queryFn: async () => {
       const all = await getAnnouncements()
-      return all.slice(0, 3)
+      return all.filter(a => canSeeAnnouncement(a, role)).slice(0, 3)
     },
   })
 
@@ -81,6 +82,9 @@ export default function Dashboard() {
     enabled: !!myStudent.data?.id,
     queryFn: () => getMyAttendance(myStudent.data.id),
   })
+
+  const mySubjects = useQuery({ queryKey: ['subjects-list'], enabled: isStudent(role), queryFn: getSubjects })
+  const myGeneral = computeAverages(myGrades.data ?? [], mySubjects.data).general
 
   const greeting = (() => {
     const h = new Date().getHours()
@@ -117,8 +121,8 @@ export default function Dashboard() {
             <p className="text-xl font-semibold text-slate-900">{myClassName ?? 'Non assigné'}</p>
             <p className="text-xs text-slate-400 mt-1">Matricule : {myStudent.data?.matricule}</p>
           </div>
-          <StatCard icon={BookOpen} label="Notes enregistrées" value={myGrades.data?.length ?? 0} color="bg-amber-100 text-amber-700" />
-          <StatCard icon={CalendarCheck} label="Présences enregistrées" value={myAtt.data?.length ?? 0} color="bg-emerald-100 text-emerald-700" />
+          <StatCard icon={BookOpen} label="Moyenne générale" value={myGeneral != null ? `${myGeneral.toFixed(2)}/20` : '—'} color="bg-amber-100 text-amber-700" />
+          <StatCard icon={CalendarCheck} label="Absences" value={myAtt.data?.filter(a => a.status === 'absent').length ?? 0} color="bg-red-100 text-red-700" />
         </div>
       )}
 

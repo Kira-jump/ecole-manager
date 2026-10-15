@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Megaphone, Pin, Trash2 } from 'lucide-react'
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
-import { isStaff, ROLES, ROLE_LIST, roleLabel } from '../lib/roles'
+import { isStaff, canSeeAnnouncement, ROLES, ROLE_LIST, roleLabel } from '../lib/roles'
 import { getAnnouncements, addAnnouncement, deleteAnnouncement, togglePinned } from '../lib/db'
 import PageHeader from '../components/ui/PageHeader'
 import Modal from '../components/ui/Modal'
@@ -18,7 +18,11 @@ export default function Announcements() {
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState({ title: '', content: '', pinned: false, audience: ['eleve', 'professeur'] })
 
-  const announcements = useQuery({ queryKey: ['announcements-list'], queryFn: getAnnouncements })
+  const announcements = useQuery({
+    queryKey: ['announcements-list'],
+    queryFn: getAnnouncements,
+    select: (list) => list.filter(a => canSeeAnnouncement(a, profile?.role)),
+  })
 
   const toggleAudience = (role) => {
     setForm(f => ({

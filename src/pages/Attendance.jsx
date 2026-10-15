@@ -86,7 +86,17 @@ export default function Attendance() {
     return (
       <div>
         <PageHeader title="Mes présences" description="Historique de mes présences et absences" />
-        <div className="card overflow-hidden">
+        {myAttendance.data?.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            {Object.entries(STATUS).map(([k, st]) => (
+              <div key={k} className="card p-4">
+                <p className="text-xs text-slate-500">{st.label}</p>
+                <p className="text-2xl font-bold text-slate-900">{myAttendance.data.filter(a => a.status === k).length}</p>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="card overflow-x-auto">
           {myAttendance.isLoading ? (
             <div className="flex justify-center py-12"><Spinner /></div>
           ) : myAttendance.data?.length === 0 ? (
@@ -102,7 +112,7 @@ export default function Attendance() {
               </thead>
               <tbody>
                 {myAttendance.data.map(a => {
-                  const st = STATUS[a.status]
+                  const st = STATUS[a.status] ?? { label: a.status ?? '—', color: 'bg-slate-100 text-slate-600', icon: Clock }
                   const Icon = st.icon
                   return (
                     <tr key={a.id} className="hover:bg-slate-50">
