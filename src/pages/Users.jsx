@@ -4,6 +4,7 @@ import { UserPlus, Copy, Check, Power, Search } from 'lucide-react'
 import { createUserWithEmailAndPassword, getAuth } from 'firebase/auth'
 import { initializeApp } from 'firebase/app'
 import { useToast } from '../contexts/ToastContext'
+import { useAuth } from '../contexts/AuthContext'
 import { getProfiles, toggleProfileActive, createUserRecord, getClasses } from '../lib/db'
 import { ROLES, ROLE_LIST, roleLabel, roleColor } from '../lib/roles'
 import { auth } from '../lib/firebase'
@@ -33,6 +34,7 @@ const blank = {
 
 export default function Users() {
   const toast = useToast()
+  const { profile: me } = useAuth()
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
   const [open, setOpen] = useState(false)
@@ -144,6 +146,7 @@ export default function Users() {
   }
 
   const toggleActive = async (p) => {
+    if (p.id === me?.id) { toast.error('Tu ne peux pas désactiver ton propre compte'); return }
     try {
       await toggleProfileActive(p.id, !p.active)
       toast.success(p.active ? 'Compte désactivé' : 'Compte réactivé')
@@ -217,7 +220,9 @@ export default function Users() {
                         : <span className="text-xs text-red-700 bg-red-50 px-2 py-0.5 rounded">Désactivé</span>}
                     </td>
                     <td className="table-td text-right">
-                      <button onClick={() => toggleActive(p)} className="btn-ghost text-xs" title={p.active ? 'Désactiver' : 'Réactiver'}>
+                      <button onClick={() => toggleActive(p)} disabled={p.id === me?.id}
+                        className="btn-ghost text-xs disabled:opacity-30 disabled:cursor-not-allowed"
+                        title={p.id === me?.id ? 'Tu ne peux pas désactiver ton propre compte' : p.active ? 'Désactiver' : 'Réactiver'}>
                         <Power size={14} />
                       </button>
                     </td>

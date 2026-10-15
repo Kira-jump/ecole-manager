@@ -30,7 +30,7 @@ function FullScreenLoader() {
 }
 
 export default function App() {
-  const { session, profile, loading } = useAuth()
+  const { session, profile, loading, signOut } = useAuth()
 
   if (loading) return <FullScreenLoader />
 
@@ -49,6 +49,19 @@ export default function App() {
         <div className="card p-8 max-w-md text-center">
           <h2 className="text-lg font-semibold text-slate-900">Profil introuvable</h2>
           <p className="text-sm text-slate-600 mt-2">Contacte l'administrateur.</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Compte désactivé par l'administration : accès bloqué
+  if (profile.active === false) {
+    return (
+      <div className="h-full flex items-center justify-center p-6">
+        <div className="card p-8 max-w-md text-center">
+          <h2 className="text-lg font-semibold text-slate-900">Compte désactivé</h2>
+          <p className="text-sm text-slate-600 mt-2">Ton accès a été suspendu. Contacte l'administration de l'école.</p>
+          <button onClick={signOut} className="btn-secondary mt-5">Se déconnecter</button>
         </div>
       </div>
     )
