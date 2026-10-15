@@ -11,11 +11,7 @@ import Modal from '../components/ui/Modal'
 import EmptyState from '../components/ui/EmptyState'
 import Spinner from '../components/ui/Spinner'
 
-const LEVELS = [
-  { value: 'primaire', label: 'Primaire' },
-  { value: 'college', label: 'Collège' },
-  { value: 'lycee', label: 'Lycée' },
-]
+import { LEVELS, SECTIONS } from '../lib/levels'
 
 export default function Classes() {
   const toast = useToast()
@@ -24,7 +20,7 @@ export default function Classes() {
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ name: '', level: 'college', capacity: 50 })
+  const [form, setForm] = useState({ name: '', level: 'college', section: '', capacity: 50 })
 
   const myTeacher = useQuery({
     queryKey: ['my-teacher-cls', profile?.id],
@@ -55,18 +51,18 @@ export default function Classes() {
     },
   })
 
-  const openCreate = () => { setEditing(null); setForm({ name: '', level: 'college', capacity: 50 }); setOpen(true) }
-  const openEdit = (c) => { setEditing(c); setForm({ name: c.name, level: c.level, capacity: c.capacity ?? 50 }); setOpen(true) }
+  const openCreate = () => { setEditing(null); setForm({ name: '', level: 'college', section: '', capacity: 50 }); setOpen(true) }
+  const openEdit = (c) => { setEditing(c); setForm({ name: c.name, level: c.level, section: c.section ?? '', capacity: c.capacity ?? 50 }); setOpen(true) }
 
   const submit = async (e) => {
     e.preventDefault()
     try {
       const year = await getActiveYear()
       if (editing) {
-        await updateClass(editing.id, { name: form.name, level: form.level, capacity: Number(form.capacity) || 50 })
+        await updateClass(editing.id, { name: form.name, level: form.level, section: form.level === 'maternelle' ? form.section : null, capacity: Number(form.capacity) || 50 })
         toast.success('Classe mise à jour')
       } else {
-        await createClass({ name: form.name, level: form.level, capacity: Number(form.capacity) || 50, school_year_id: year?.id ?? null, school_year_label: year?.label ?? '' })
+        await createClass({ name: form.name, level: form.level, section: form.level === 'maternelle' ? form.section : null, capacity: Number(form.capacity) || 50, school_year_id: year?.id ?? null, school_year_label: year?.label ?? '' })
         toast.success('Classe créée')
       }
       qc.invalidateQueries({ queryKey: ['classes'] })
@@ -156,11 +152,25 @@ export default function Classes() {
       >
         <form id="class-form" onSubmit={submit} className="space-y-4">
           <div><label className="label">Nom de la classe *</label>
-            <input className="input" required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Ex : 6ème A, Terminale S1" /></div>
+            <input className="input" required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Ex : Petite section A, CE2 B, 6ème A" /></div>
           <div><label className="label">Niveau *</label>
-            <select className="input" value={form.level} onChange={e => setForm({ ...form, level: e.target.value })}>
+            <select className="input" value={form.level}
+              onChange={e => setForm({ ...form, level: e.target.value, section: e.target.value === 'maternelle' ? form.section : '' })}>
               {LEVELS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
             </select></div>
+          {form.level === 'maternelle' && (
+            <div><label className="label">Section *</label>
+              <select className="input" required value={form.section}
+                onChange={e => {
+                  const label = SECTIONS.find(s => s.value === e.target.value)?.label ?? ''
+                  // Pré-remplit le nom (ex : "Petite section") sans écraser un nom déjà personnalisé
+                  const autoName = !form.name || SECTIONS.some(s => s.label === form.name)
+                  setForm({ ...form, section: e.target.value, name: autoName ? label : form.name })
+                }}>
+                <option value="">— Choisir —</option>
+                {SECTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+              </select></div>
+          )}
           <div><label className="label">Capacité maximale</label>
             <input type="number" min="1" className="input" value={form.capacity} onChange={e => setForm({ ...form, capacity: e.target.value })} /></div>
         </form>

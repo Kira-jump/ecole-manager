@@ -11,6 +11,7 @@ import Spinner from '../components/ui/Spinner'
 import EmptyState from '../components/ui/EmptyState'
 import Modal from '../components/ui/Modal'
 import { roleColor, roleLabel } from '../lib/roles'
+import { levelLabel } from '../lib/levels'
 
 // ── Hooks ──────────────────────────────────────────────────────────────
 
@@ -198,7 +199,6 @@ const TABS = [
   { id: 'infos', label: 'Infos', icon: Info },
 ]
 
-const LEVELS = { primaire: 'Primaire', college: 'Collège', lycee: 'Lycée' }
 
 export default function ClassDetail() {
   const { id } = useParams()
@@ -236,7 +236,7 @@ export default function ClassDetail() {
         </button>
         <div>
           <h1 className="text-2xl font-bold text-slate-900">{cls.name}</h1>
-          <p className="text-sm text-slate-500">{LEVELS[cls.level]} • {cls.school_year_label}</p>
+          <p className="text-sm text-slate-500">{levelLabel(cls)} • {cls.school_year_label}</p>
         </div>
       </div>
 
@@ -338,7 +338,7 @@ export default function ClassDetail() {
           <div className="space-y-3">
             <div className="flex justify-between py-2 border-b border-slate-100">
               <span className="text-sm text-slate-500">Niveau</span>
-              <span className="text-sm font-medium text-slate-900">{LEVELS[cls.level]}</span>
+              <span className="text-sm font-medium text-slate-900">{levelLabel(cls)}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-slate-100">
               <span className="text-sm text-slate-500">Année scolaire</span>

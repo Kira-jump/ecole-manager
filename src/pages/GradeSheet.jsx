@@ -53,7 +53,7 @@ export default function GradeSheet() {
     if (!classId && classes.data?.length > 0) setClassId(classes.data[0].id)
   }, [classes.data, classId])
 
-  // Trimestre (primaire) ou semestre (collège / lycée) selon le niveau de la classe
+  // Trimestre (maternelle / primaire) ou semestre (collège / lycée) selon le niveau de la classe
   const level = classes.data?.find(c => c.id === classId)?.level
   const termOptions = termsForLevel(level)
   useEffect(() => {
@@ -194,7 +194,7 @@ export default function GradeSheet() {
   }
 
   const loading = classes.isLoading || assignments.isLoading || students.isLoading || existing.isLoading || subjects.isLoading
-  const periodLabel = level === 'primaire' ? 'Trimestre' : level ? 'Semestre' : 'Période'
+  const periodLabel = level ? (termOptions[0]?.value.startsWith('trimestre') ? 'Trimestre' : 'Semestre') : 'Période'
 
   return (
     <div>

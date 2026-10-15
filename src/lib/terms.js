@@ -8,7 +8,7 @@ export const TERMS = [
 ]
 
 export const termsForLevel = (level) => {
-  if (level === 'primaire') return TERMS.filter(t => t.value.startsWith('trimestre'))
+  if (level === 'maternelle' || level === 'primaire') return TERMS.filter(t => t.value.startsWith('trimestre'))
   if (level) return TERMS.filter(t => t.value.startsWith('semestre'))
   return TERMS
 }
