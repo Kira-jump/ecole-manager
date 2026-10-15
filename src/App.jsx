@@ -12,6 +12,7 @@ import Teachers from './pages/Teachers'
 import Subjects from './pages/Subjects'
 import Grades from './pages/Grades'
 import GradeSheet from './pages/GradeSheet'
+import { ACCESS } from './lib/access'
 import Attendance from './pages/Attendance'
 import Announcements from './pages/Announcements'
 import Settings from './pages/Settings'
@@ -67,30 +68,39 @@ export default function App() {
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />
 
-        <Route element={<ProtectedRoute allow={['fondateur', 'directeur_general']} />}>
+        <Route element={<ProtectedRoute allow={ACCESS.users} />}>
           <Route path="/users" element={<Users />} />
         </Route>
 
-        <Route element={<ProtectedRoute allow={['fondateur', 'directeur_general', 'directeur_etudes', 'coordinateur', 'professeur']} />}>
+        <Route element={<ProtectedRoute allow={ACCESS.classes} />}>
           <Route path="/classes" element={<Classes />} />
           <Route path="/classes/:id" element={<ClassDetail />} />
+        </Route>
+
+        <Route element={<ProtectedRoute allow={ACCESS.gradeSheet} />}>
           <Route path="/grade-sheet" element={<GradeSheet />} />
         </Route>
 
-        <Route element={<ProtectedRoute allow={['fondateur', 'directeur_general', 'directeur_etudes', 'coordinateur']} />}>
+        <Route element={<ProtectedRoute allow={ACCESS.subjects} />}>
           <Route path="/subjects" element={<Subjects />} />
         </Route>
 
-        <Route element={<ProtectedRoute denyOnly={['eleve']} />}>
+        <Route element={<ProtectedRoute allow={ACCESS.students} />}>
           <Route path="/students" element={<Students />} />
         </Route>
 
-        <Route element={<ProtectedRoute denyOnly={['eleve', 'professeur']} />}>
+        <Route element={<ProtectedRoute allow={ACCESS.teachers} />}>
           <Route path="/teachers" element={<Teachers />} />
         </Route>
 
-        <Route path="/grades" element={<Grades />} />
-        <Route path="/attendance" element={<Attendance />} />
+        <Route element={<ProtectedRoute allow={ACCESS.grades} />}>
+          <Route path="/grades" element={<Grades />} />
+        </Route>
+
+        <Route element={<ProtectedRoute allow={ACCESS.attendance} />}>
+          <Route path="/attendance" element={<Attendance />} />
+        </Route>
+
         <Route path="/announcements" element={<Announcements />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/change-password" element={<ChangePassword />} />

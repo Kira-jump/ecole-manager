@@ -5,33 +5,23 @@ import {
   School, X, BookMarked,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
-import { isAdmin, isPedagogy, isStudent, isTeacher } from '../lib/roles'
+import { canAccess } from '../lib/access'
 
-function buildNav(role) {
-  const items = [
-    { to: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
-  ]
-  if (isAdmin(role)) {
-    items.push({ to: '/users', label: 'Comptes & accès', icon: UserCog })
-  }
-  if (isPedagogy(role) || isTeacher(role)) {
-    items.push({ to: '/classes', label: 'Classes', icon: School })
-  }
-  if (isPedagogy(role)) {
-    items.push({ to: '/subjects', label: 'Matières', icon: BookMarked })
-  }
-  if (!isStudent(role)) {
-    items.push({ to: '/students', label: 'Élèves', icon: GraduationCap })
-  }
-  if (!isStudent(role) && !isTeacher(role)) {
-    items.push({ to: '/teachers', label: 'Enseignants', icon: Users })
-  }
-  items.push({ to: '/grades', label: 'Notes', icon: BookOpen })
-  items.push({ to: '/attendance', label: 'Présences', icon: CalendarCheck })
-  items.push({ to: '/announcements', label: 'Annonces', icon: Megaphone })
-  items.push({ to: '/settings', label: 'Paramètres', icon: SettingsIcon })
-  return items
-}
+const NAV = [
+  { to: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, page: 'dashboard' },
+  { to: '/users', label: 'Comptes & accès', icon: UserCog, page: 'users' },
+  { to: '/classes', label: 'Classes', icon: School, page: 'classes' },
+  { to: '/subjects', label: 'Matières', icon: BookMarked, page: 'subjects' },
+  { to: '/students', label: 'Élèves', icon: GraduationCap, page: 'students' },
+  { to: '/teachers', label: 'Enseignants', icon: Users, page: 'teachers' },
+  { to: '/grades', label: 'Notes', icon: BookOpen, page: 'grades' },
+  { to: '/attendance', label: 'Présences', icon: CalendarCheck, page: 'attendance' },
+  { to: '/announcements', label: 'Annonces', icon: Megaphone, page: 'announcements' },
+  { to: '/settings', label: 'Paramètres', icon: SettingsIcon, page: 'settings' },
+]
+
+// Le menu affiche uniquement les pages auxquelles le rôle a accès
+const buildNav = (role) => NAV.filter(item => canAccess(role, item.page))
 
 export default function Sidebar({ mobileOpen, onClose }) {
   const { profile } = useAuth()

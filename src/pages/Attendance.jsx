@@ -4,6 +4,7 @@ import { Calendar, Check, X, Clock, FileCheck } from 'lucide-react'
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
 import { isStudent, isTeacher, isStaff, canManageDiscipline } from '../lib/roles'
+import { canTakeAttendance } from '../lib/access'
 import { getAttendanceForClass, setAttendance, justifyAbsence, getMyAttendance, getStudentByProfileId } from '../lib/db'
 import { useMyClasses } from '../lib/useMyClasses'
 import PageHeader from '../components/ui/PageHeader'
@@ -54,7 +55,7 @@ export default function Attendance() {
   })
 
   const markStatus = async (studentId, status) => {
-    if (!isTeacher(role) && !isStaff(role)) return
+    if (!canTakeAttendance(role)) return
     try {
       await setAttendance(studentId, date, status, profile.id)
       qc.invalidateQueries({ queryKey: ['attendance-students', classId, date] })

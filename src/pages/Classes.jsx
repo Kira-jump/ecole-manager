@@ -4,7 +4,7 @@ import { Plus, Pencil, Trash2, School } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
-import { isTeacher } from '../lib/roles'
+import { isTeacher, isPedagogy } from '../lib/roles'
 import { getClasses, getClassesForTeacher, createClass, updateClass, deleteClass, getActiveYear, getTeacherByProfileId } from '../lib/db'
 import PageHeader from '../components/ui/PageHeader'
 import Modal from '../components/ui/Modal'
@@ -16,6 +16,7 @@ import { LEVELS, SECTIONS } from '../lib/levels'
 export default function Classes() {
   const toast = useToast()
   const { profile } = useAuth()
+  const canManage = isPedagogy(profile?.role)   // seule la pédagogie crée / modifie / supprime
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)
@@ -89,7 +90,7 @@ export default function Classes() {
       <PageHeader
         title="Classes"
         description="Organisation des classes par niveau"
-        actions={!isTeacher(profile?.role) && <button onClick={openCreate} className="btn-primary"><Plus size={16} /> Nouvelle classe</button>}
+        actions={canManage && <button onClick={openCreate} className="btn-primary"><Plus size={16} /> Nouvelle classe</button>}
       />
 
       {classes.isLoading ? (
@@ -99,7 +100,7 @@ export default function Classes() {
           <EmptyState icon={School}
             title={isTeacher(profile?.role) ? 'Aucune classe assignée' : 'Aucune classe'}
             description={isTeacher(profile?.role) ? "Demande à l'administration de t'affecter à une classe." : 'Crée tes premières classes.'}
-            action={!isTeacher(profile?.role) && <button onClick={openCreate} className="btn-primary"><Plus size={16} /> Nouvelle classe</button>} />
+            action={canManage && <button onClick={openCreate} className="btn-primary"><Plus size={16} /> Nouvelle classe</button>} />
         </div>
       ) : (
         <div className="space-y-6">
@@ -122,7 +123,7 @@ export default function Classes() {
                             <p className="text-xs text-slate-500">{c.school_year_label}</p>
                           </div>
                         </div>
-                        {!isTeacher(profile?.role) && (
+                        {canManage && (
                           <div className="flex gap-1">
                             <button onClick={(e) => { e.stopPropagation(); openEdit(c) }} className="btn-ghost p-1.5"><Pencil size={14} /></button>
                             <button onClick={(e) => { e.stopPropagation(); remove(c) }} className="btn-ghost p-1.5 text-red-600 hover:bg-red-50"><Trash2 size={14} /></button>

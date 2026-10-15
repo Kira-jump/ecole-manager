@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { GraduationCap, Users, School, BookOpen, CalendarCheck, Megaphone, TrendingUp } from 'lucide-react'
+import { GraduationCap, Users, School, BookOpen, CalendarCheck, Megaphone, TrendingUp, Table2 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { isStaff, isStudent, isTeacher, roleLabel, canSeeAnnouncement } from '../lib/roles'
+import { canAccess, canTakeAttendance } from '../lib/access'
 import { getDashboardStats, getAnnouncements, getStudentByProfileId, getGrades, getMyAttendance, getClasses, getTeacherByProfileId, getAssignments, countStudentsInClasses, getSubjects } from '../lib/db'
 import { useMyClasses } from '../lib/useMyClasses'
 import { computeAverages } from '../lib/averages'
@@ -22,6 +23,17 @@ function StatCard({ icon: Icon, label, value, color }) {
     </div>
   )
 }
+
+// Raccourcis : chaque rôle ne voit que ceux des pages auxquelles il a accès
+const SHORTCUTS = [
+  { to: '/grade-sheet', page: 'gradeSheet', icon: Table2, color: 'text-brand-700', label: () => 'Fiche de notes' },
+  { to: '/grades', page: 'grades', icon: BookOpen, color: 'text-amber-600', label: (r) => (isStudent(r) ? 'Mes notes' : 'Notes') },
+  { to: '/attendance', page: 'attendance', icon: CalendarCheck, color: 'text-emerald-600',
+    label: (r) => (isStudent(r) ? 'Mes présences' : canTakeAttendance(r) ? "Faire l'appel" : 'Présences') },
+  { to: '/students', page: 'students', icon: GraduationCap, color: 'text-blue-600', label: () => 'Liste des élèves' },
+  { to: '/classes', page: 'classes', icon: School, color: 'text-emerald-700', label: (r) => (isTeacher(r) ? 'Mes classes' : 'Classes') },
+  { to: '/announcements', page: 'announcements', icon: Megaphone, color: 'text-brand-700', label: () => 'Annonces' },
+]
 
 export default function Dashboard() {
   const { profile } = useAuth()
@@ -99,10 +111,10 @@ export default function Dashboard() {
 
       {isStaff(role) && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <StatCard icon={GraduationCap} label="Élèves" value={stats.data?.students} color="bg-blue-100 text-blue-700" />
-          <StatCard icon={Users} label="Enseignants" value={stats.data?.teachers} color="bg-purple-100 text-purple-700" />
-          <StatCard icon={School} label="Classes" value={stats.data?.classes} color="bg-emerald-100 text-emerald-700" />
-          <StatCard icon={BookOpen} label="Matières" value={stats.data?.subjects} color="bg-amber-100 text-amber-700" />
+          {canAccess(role, 'students') && <StatCard icon={GraduationCap} label="Élèves" value={stats.data?.students} color="bg-blue-100 text-blue-700" />}
+          {canAccess(role, 'teachers') && <StatCard icon={Users} label="Enseignants" value={stats.data?.teachers} color="bg-purple-100 text-purple-700" />}
+          {canAccess(role, 'classes') && <StatCard icon={School} label="Classes" value={stats.data?.classes} color="bg-emerald-100 text-emerald-700" />}
+          {canAccess(role, 'subjects') && <StatCard icon={BookOpen} label="Matières" value={stats.data?.subjects} color="bg-amber-100 text-amber-700" />}
         </div>
       )}
 
@@ -151,24 +163,15 @@ export default function Dashboard() {
         <div className="card p-5">
           <h2 className="font-semibold text-slate-900 mb-4 flex items-center gap-2"><TrendingUp size={18} className="text-brand-700" /> Raccourcis</h2>
           <div className="space-y-2">
-            <Link to="/grades" className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 border border-slate-100">
-              <BookOpen size={18} className="text-amber-600" />
-              <span className="text-sm font-medium text-slate-700">{isStudent(role) ? 'Mes notes' : 'Saisir / consulter notes'}</span>
-            </Link>
-            <Link to="/attendance" className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 border border-slate-100">
-              <CalendarCheck size={18} className="text-emerald-600" />
-              <span className="text-sm font-medium text-slate-700">{isStudent(role) ? 'Mes présences' : "Faire l'appel"}</span>
-            </Link>
-            <Link to="/announcements" className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 border border-slate-100">
-              <Megaphone size={18} className="text-brand-700" />
-              <span className="text-sm font-medium text-slate-700">Annonces</span>
-            </Link>
-            {isStaff(role) && (
-              <Link to="/students" className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 border border-slate-100">
-                <GraduationCap size={18} className="text-blue-600" />
-                <span className="text-sm font-medium text-slate-700">Liste des élèves</span>
-              </Link>
-            )}
+            {SHORTCUTS.filter(s => canAccess(role, s.page)).map(s => {
+              const Icon = s.icon
+              return (
+                <Link key={s.to} to={s.to} className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 border border-slate-100">
+                  <Icon size={18} className={s.color} />
+                  <span className="text-sm font-medium text-slate-700">{s.label(role)}</span>
+                </Link>
+              )
+            })}
           </div>
         </div>
       </div>
