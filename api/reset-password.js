@@ -3,7 +3,33 @@
 import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
-import { canResetPassword, generatePassword } from './_lib/reset.js'
+import { randomInt } from 'node:crypto'
+
+// --- Règles de réinitialisation (dans ce fichier : un seul fichier = déploiement Vercel fiable) ---
+const ADMIN_ROLES = ['fondateur', 'directeur_general']
+
+// Sans caractères ambigus (0/O, 1/l/I) pour éviter les erreurs de recopie
+const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'
+
+const generatePassword = (length = 10) => {
+  let pwd = ''
+  for (let i = 0; i < length; i++) pwd += ALPHABET[randomInt(ALPHABET.length)]
+  return pwd
+}
+
+// Qui a le droit de réinitialiser le mot de passe de qui
+const canResetPassword = ({ callerRole, targetRole, sameUser }) => {
+  if (sameUser) {
+    return { ok: false, status: 400, error: 'Pour ton propre compte, utilise « Changer mon mot de passe ».' }
+  }
+  if (!ADMIN_ROLES.includes(callerRole)) {
+    return { ok: false, status: 403, error: 'Action réservée à la direction.' }
+  }
+  if (ADMIN_ROLES.includes(targetRole) && callerRole !== 'fondateur') {
+    return { ok: false, status: 403, error: 'Seul le fondateur peut réinitialiser un compte de direction.' }
+  }
+  return { ok: true }
+}
 
 function initAdmin() {
   if (getApps().length) return
