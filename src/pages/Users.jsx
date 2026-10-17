@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { UserPlus, Copy, Check, Power, Search } from 'lucide-react'
+import { UserPlus, Copy, Check, Power, Search, KeyRound } from 'lucide-react'
 import { createUserWithEmailAndPassword, getAuth } from 'firebase/auth'
 import { initializeApp } from 'firebase/app'
 import { useToast } from '../contexts/ToastContext'
@@ -13,10 +13,15 @@ import Modal from '../components/ui/Modal'
 import EmptyState from '../components/ui/EmptyState'
 import Spinner from '../components/ui/Spinner'
 
-function generatePassword() {
+function generatePassword(length = 10) {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'
+  const limit = 256 - (256 % chars.length) // évite le biais statistique
   let pwd = ''
-  for (let i = 0; i < 10; i++) pwd += chars[Math.floor(Math.random() * chars.length)]
+  while (pwd.length < length) {
+    for (const b of crypto.getRandomValues(new Uint8Array(length))) {
+      if (b < limit && pwd.length < length) pwd += chars[b % chars.length]
+    }
+  }
   return pwd
 }
 
@@ -115,6 +120,40 @@ export default function Users() {
       toast.error(err?.message ?? 'Création échouée')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  // Réinitialisation du mot de passe par la direction (via la fonction serveur /api/reset-password)
+  const [resettingId, setResettingId] = useState(null)
+  const canResetRow = (p) =>
+    p.id !== me?.id && (!['fondateur', 'directeur_general'].includes(p.role) || me?.role === 'fondateur')
+
+  const resetPassword = async (p) => {
+    if (!confirm(`Réinitialiser le mot de passe de ${p.first_name} ${p.last_name} ?\n\nL'ancien mot de passe ne fonctionnera plus et la personne sera déconnectée.`)) return
+    setResettingId(p.id)
+    try {
+      const token = await auth.currentUser.getIdToken()
+      const res = await fetch('/api/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ uid: p.id }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Réinitialisation impossible')
+      setCreatedUser({
+        email: p.email,
+        first_name: p.first_name,
+        last_name: p.last_name,
+        role: p.role,
+        matricule: data.matricule ?? null,
+        temporary_password: data.password,
+        reset: true,
+      })
+      setOpen(true)
+    } catch (err) {
+      toast.error(err?.message ?? 'Réinitialisation impossible')
+    } finally {
+      setResettingId(null)
     }
   }
 
@@ -219,7 +258,13 @@ export default function Users() {
                         ? <span className="text-xs text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">Actif</span>
                         : <span className="text-xs text-red-700 bg-red-50 px-2 py-0.5 rounded">Désactivé</span>}
                     </td>
-                    <td className="table-td text-right">
+                    <td className="table-td text-right whitespace-nowrap">
+                      {canResetRow(p) && (
+                        <button onClick={() => resetPassword(p)} disabled={resettingId === p.id}
+                          className="btn-ghost text-xs disabled:opacity-50" title="Réinitialiser le mot de passe">
+                          <KeyRound size={14} />
+                        </button>
+                      )}
                       <button onClick={() => toggleActive(p)} disabled={p.id === me?.id}
                         className="btn-ghost text-xs disabled:opacity-30 disabled:cursor-not-allowed"
                         title={p.id === me?.id ? 'Tu ne peux pas désactiver ton propre compte' : p.active ? 'Désactiver' : 'Réactiver'}>
@@ -234,7 +279,7 @@ export default function Users() {
         )}
       </div>
 
-      <Modal open={open} onClose={closeAll} title={createdUser ? '✅ Compte créé' : 'Créer un compte'} size="lg"
+      <Modal open={open} onClose={closeAll} title={createdUser ? (createdUser.reset ? '🔑 Mot de passe réinitialisé' : '✅ Compte créé') : 'Créer un compte'} size="lg"
         footer={createdUser ? (
           <button onClick={closeAll} className="btn-primary">Terminé</button>
         ) : (
