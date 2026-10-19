@@ -5,9 +5,9 @@ import { Link } from 'react-router-dom'
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
 import { isStudent, isTeacher, isPedagogy } from '../lib/roles'
-import { getGrades, addGrade, addGradesBulk, deleteGrade, getSubjects, getStudents, getStudentByProfileId, getTeacherByProfileId, getAssignments } from '../lib/db'
+import { getGrades, addGrade, addGradesBulk, deleteGrade, getSubjects, getStudents, getStudentByProfileId, getTeacherByProfileId, getAssignments, getClassSubjects } from '../lib/db'
 import { useMyClasses } from '../lib/useMyClasses'
-import { computeAverages } from '../lib/averages'
+import { computeAverages, buildCoefMap } from '../lib/averages'
 import { TERMS, termsForLevel } from '../lib/terms'
 import PageHeader from '../components/ui/PageHeader'
 import Modal from '../components/ui/Modal'
@@ -75,6 +75,11 @@ export default function Grades() {
   })
 
   const subjects = useQuery({ queryKey: ['subjects-list'], queryFn: getSubjects })
+  const myClassCoefs = useQuery({
+    queryKey: ['class-coefs', myStudent.data?.class_id],
+    enabled: isStudent(role) && !!myStudent.data?.class_id,
+    queryFn: () => getClassSubjects(myStudent.data.class_id),
+  })
   const classes = useMyClasses()
 
   const availableSubjects = useMemo(() => {
@@ -245,7 +250,7 @@ export default function Grades() {
   // Élève : onglets Trimestres (primaire) ou Semestres (collège / lycée)
   const myLevel = classes.data?.find(c => c.id === myStudent.data?.class_id)?.level
   const studentTerms = termsForLevel(myLevel)
-  const averages = computeAverages(grades.data ?? [], subjects.data)
+  const averages = computeAverages(grades.data ?? [], subjects.data, buildCoefMap(myClassCoefs.data))
   const canAdd = isTeacher(role) || isPedagogy(role)
 
   return (

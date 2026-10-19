@@ -6,7 +6,8 @@ import { useAuth } from '../contexts/AuthContext'
 import { isTeacher } from '../lib/roles'
 import { useMyClasses } from '../lib/useMyClasses'
 import { termsForLevel } from '../lib/terms'
-import { getStudents, getSubjects, getTeacherByProfileId, getClassAssignments, getSheetGrades, saveGradeSheet } from '../lib/db'
+import { getStudents, getSubjects, getTeacherByProfileId, getClassAssignments, getSheetGrades, saveGradeSheet, getClassSubjects } from '../lib/db'
+import { buildCoefMap } from '../lib/averages'
 import PageHeader from '../components/ui/PageHeader'
 import Spinner from '../components/ui/Spinner'
 import EmptyState from '../components/ui/EmptyState'
@@ -67,6 +68,15 @@ export default function GradeSheet() {
     queryFn: () => getClassAssignments(classId),
   })
 
+  // Coefficients propres à la classe (à défaut : coefficient par défaut de la matière)
+  const classSubjects = useQuery({
+    queryKey: ['class-coefs', classId],
+    enabled: !!classId,
+    queryFn: () => getClassSubjects(classId),
+  })
+  const coefMap = useMemo(() => buildCoefMap(classSubjects.data), [classSubjects.data])
+  const coefOf = (c) => Number(coefMap.get(c.id)) || Number(c.default_coefficient) || 1
+
   const students = useQuery({
     queryKey: ['sheet-students', classId],
     enabled: !!classId,
@@ -120,7 +130,7 @@ export default function GradeSheet() {
 
   const studentAvg = (sid) => average(
     columns
-      .map(c => ({ p: parseValue(getCell(sid, c.id)), coef: Number(c.default_coefficient) || 1 }))
+      .map(c => ({ p: parseValue(getCell(sid, c.id)), coef: coefOf(c) }))
       .filter(i => i.p.value !== undefined)
       .map(i => ({ v: i.p.value, coef: i.coef }))
   )
@@ -240,7 +250,7 @@ export default function GradeSheet() {
                   {columns.map(c => (
                     <th key={c.id} className="sticky top-0 z-20 bg-slate-50 px-2 py-2 min-w-[5.5rem] border-b border-r border-slate-200 text-center">
                       <div className="text-xs font-semibold text-slate-700 truncate max-w-[6rem] mx-auto">{c.name}</div>
-                      <div className="text-[10px] font-normal text-slate-400">coef {c.default_coefficient ?? 1}</div>
+                      <div className="text-[10px] font-normal text-slate-400">coef {coefOf(c)}</div>
                     </th>
                   ))}
                   <th className="sticky top-0 z-20 bg-slate-100 px-2 py-2 min-w-[4.5rem] border-b border-slate-200 text-center text-xs font-semibold text-slate-700">Moy.</th>

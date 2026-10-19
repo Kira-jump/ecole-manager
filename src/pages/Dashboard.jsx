@@ -4,9 +4,9 @@ import { GraduationCap, Users, School, BookOpen, CalendarCheck, Megaphone, Trend
 import { useAuth } from '../contexts/AuthContext'
 import { isStaff, isStudent, isTeacher, roleLabel, canSeeAnnouncement } from '../lib/roles'
 import { canAccess, canTakeAttendance } from '../lib/access'
-import { getDashboardStats, getAnnouncements, getStudentByProfileId, getGrades, getMyAttendance, getClasses, getTeacherByProfileId, getAssignments, countStudentsInClasses, getSubjects } from '../lib/db'
+import { getDashboardStats, getAnnouncements, getStudentByProfileId, getGrades, getMyAttendance, getClasses, getTeacherByProfileId, getAssignments, countStudentsInClasses, getSubjects, getClassSubjects } from '../lib/db'
 import { useMyClasses } from '../lib/useMyClasses'
-import { computeAverages } from '../lib/averages'
+import { computeAverages, buildCoefMap } from '../lib/averages'
 import PageHeader from '../components/ui/PageHeader'
 import Spinner from '../components/ui/Spinner'
 
@@ -96,7 +96,12 @@ export default function Dashboard() {
   })
 
   const mySubjects = useQuery({ queryKey: ['subjects-list'], enabled: isStudent(role), queryFn: getSubjects })
-  const myGeneral = computeAverages(myGrades.data ?? [], mySubjects.data).general
+  const myClassCoefs = useQuery({
+    queryKey: ['class-coefs', myStudent.data?.class_id],
+    enabled: isStudent(role) && !!myStudent.data?.class_id,
+    queryFn: () => getClassSubjects(myStudent.data.class_id),
+  })
+  const myGeneral = computeAverages(myGrades.data ?? [], mySubjects.data, buildCoefMap(myClassCoefs.data)).general
 
   const greeting = (() => {
     const h = new Date().getHours()
