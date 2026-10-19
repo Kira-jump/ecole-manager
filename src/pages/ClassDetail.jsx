@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-import { isAdmin, isPedagogy } from '../lib/roles'
+import { isAdmin, isPedagogy, isTeacher } from '../lib/roles'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Users, BookOpen, Info, GraduationCap, Phone, Calendar, User, Plus, Pencil, Trash2, Copy } from 'lucide-react'
@@ -9,6 +9,7 @@ import { db } from '../lib/firebase'
 import {
   getStudents, getSubjects, getTeachers, getAssignments, getGrades, getMyAttendance, getClasses,
   getClassSubjects, getClassAssignments, setClassSubject, removeClassSubject, copyClassSubjects,
+  getTeacherByProfileId,
 } from '../lib/db'
 import { computeAverages, buildCoefMap } from '../lib/averages'
 import { useToast } from '../contexts/ToastContext'
@@ -30,26 +31,45 @@ function useClass(id) {
   })
 }
 
-function useClassStudents(classId) {
+function useClassStudents(classId, allowed = true) {
   return useQuery({
     queryKey: ['students', classId],
-    enabled: !!classId,
+    enabled: !!classId && allowed,
     queryFn: () => getStudents(classId),
   })
 }
 
-// Matières d'une classe = lignes class_subjects (avec le coefficient PROPRE à la classe)
-function useClassSubjects(classId) {
+// Affectations d'une classe : lues une seule fois et partagées (garde d'accès + matières)
+function useClassAssignments(classId) {
   return useQuery({
-    queryKey: ['class-subjects', classId],
+    queryKey: ['class-assignments', classId],
     enabled: !!classId,
+    staleTime: 60_000,
+    queryFn: () => getClassAssignments(classId),
+  })
+}
+
+// Matières d'une classe = lignes class_subjects (avec le coefficient PROPRE à la classe)
+// Pour un prof (restricted) : uniquement les matières qui LUI sont affectées dans cette classe
+function useClassSubjects(classId, { restricted = false, teacherId = null } = {}) {
+  const qc = useQueryClient()
+  return useQuery({
+    queryKey: ['class-subjects', classId, restricted ? teacherId : 'all'],
+    enabled: !!classId && (!restricted || !!teacherId),
     queryFn: async () => {
       const [links, allSubjects, assignments] = await Promise.all([
-        getClassSubjects(classId), getSubjects(), getClassAssignments(classId),
+        getClassSubjects(classId),
+        getSubjects(),
+        qc.fetchQuery({ queryKey: ['class-assignments', classId], staleTime: 60_000, queryFn: () => getClassAssignments(classId) }),
       ])
-      if (!links.length) return []
-      const allTeachers = assignments.length ? await getTeachers() : []
-      return links
+      const mine = restricted
+        ? new Set(assignments.filter(a => a.teacher_id === teacherId).map(a => a.subject_id))
+        : null
+      const visible = mine ? links.filter(l => mine.has(l.subject_id)) : links
+      if (!visible.length) return []
+      // Un prof n'a pas besoin de la liste des autres enseignants
+      const allTeachers = !restricted && assignments.length ? await getTeachers() : []
+      return visible
         .map((l) => {
           const subj = allSubjects.find(x => x.id === l.subject_id)
           if (!subj) return null // matière supprimée du catalogue
@@ -70,10 +90,17 @@ function useClassSubjects(classId) {
 
 // ── Composant détail élève ──────────────────────────────────────────────
 
-function StudentDetail({ student, onClose, classCoefs }) {
+// allowedSubjectIds : null = aucune restriction ; tableau = prof (notes limitées à ses matières) ;
+// undefined = liste des matières du prof pas encore chargée (on attend)
+function StudentDetail({ student, onClose, classCoefs, allowedSubjectIds = null }) {
+  const restricted = allowedSubjectIds !== null
   const grades = useQuery({
-    queryKey: ['student-grades', student.id],
-    queryFn: () => getGrades({ studentId: student.id }),
+    queryKey: ['student-grades', student.id, restricted ? 'mine' : 'all'],
+    enabled: allowedSubjectIds !== undefined,
+    queryFn: async () => {
+      const all = await getGrades({ studentId: student.id })
+      return restricted ? all.filter(g => allowedSubjectIds.includes(g.subject_id)) : all
+    },
   })
 
   const attendance = useQuery({
@@ -113,7 +140,7 @@ function StudentDetail({ student, onClose, classCoefs }) {
         <div className="grid grid-cols-3 gap-3">
           <div className="card p-3 text-center">
             <p className="text-2xl font-bold text-brand-700">{moyenne ?? '—'}</p>
-            <p className="text-xs text-slate-500 mt-1">Moyenne /20</p>
+            <p className="text-xs text-slate-500 mt-1">{restricted ? 'Moy. de mes matières' : 'Moyenne /20'}</p>
           </div>
           <div className="card p-3 text-center">
             <p className="text-2xl font-bold text-red-600">{absences}</p>
@@ -209,12 +236,23 @@ export default function ClassDetail() {
   const navigate = useNavigate()
   const { profile } = useAuth()
   const canEdit = isPedagogy(profile?.role)
+  const isTeach = isTeacher(profile?.role)
   const [tab, setTab] = useState('eleves')
   const [selectedStudent, setSelectedStudent] = useState(null)
 
+  // Un prof ne voit que les classes où il enseigne, et que SES matières
+  const myTeacher = useQuery({
+    queryKey: ['my-teacher', profile?.id],
+    enabled: isTeach && !!profile?.id,
+    queryFn: () => getTeacherByProfileId(profile.id),
+  })
+  const myTeacherId = myTeacher.data?.id ?? null
+  const assignments = useClassAssignments(id)
+  const teacherAllowed = !isTeach || (!!myTeacherId && (assignments.data ?? []).some(a => a.teacher_id === myTeacherId))
+
   const classQuery = useClass(id)
-  const students = useClassStudents(id)
-  const subjects = useClassSubjects(id)
+  const students = useClassStudents(id, teacherAllowed)
+  const subjects = useClassSubjects(id, { restricted: isTeach, teacherId: teacherAllowed ? myTeacherId : null })
   const toast = useToast()
   const qc = useQueryClient()
 
@@ -286,6 +324,20 @@ export default function ClassDetail() {
     )
   }
 
+  if (isTeach && (myTeacher.isLoading || assignments.isLoading)) {
+    return <div className="flex justify-center py-20"><Spinner /></div>
+  }
+
+  // Même en tapant l'adresse à la main : pas d'accès à une classe où le prof n'enseigne pas
+  if (!teacherAllowed) {
+    return (
+      <div className="card p-8 text-center">
+        <p className="text-slate-500">Tu n'as pas accès à cette classe.</p>
+        <button onClick={() => navigate('/classes')} className="btn-secondary mt-4">Retour</button>
+      </div>
+    )
+  }
+
   return (
     <div>
       {/* Header */}
@@ -326,7 +378,7 @@ export default function ClassDetail() {
             <EmptyState icon={GraduationCap} title="Aucun élève" description="Aucun élève assigné à cette classe." />
           ) : (
             <div className="divide-y divide-slate-100">
-              {students.data.map(s => (
+              {(students.data ?? []).map(s => (
                 <button key={s.id} onClick={() => setSelectedStudent(s)}
                   className="w-full flex items-center gap-4 p-4 hover:bg-slate-50 transition-colors text-left">
                   <div className="w-10 h-10 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-sm font-bold shrink-0">
@@ -359,10 +411,10 @@ export default function ClassDetail() {
             <div className="flex justify-center py-12"><Spinner /></div>
           ) : subjects.data?.length === 0 ? (
             <EmptyState icon={BookOpen} title="Aucune matière"
-              description={canEdit ? 'Ajoute les matières de cette classe avec leur coefficient, ou copie-les depuis une autre classe.' : 'Aucune matière n\'est encore définie pour cette classe.'} />
+              description={canEdit ? 'Ajoute les matières de cette classe avec leur coefficient, ou copie-les depuis une autre classe.' : isTeach ? 'Aucune matière ne t\'est affectée dans cette classe.' : 'Aucune matière n\'est encore définie pour cette classe.'} />
           ) : (
             <div className="divide-y divide-slate-100">
-              {subjects.data.map(m => (
+              {(subjects.data ?? []).map(m => (
                 <div key={m.id} className="flex items-center justify-between gap-3 p-4">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-9 h-9 shrink-0 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
@@ -370,11 +422,11 @@ export default function ClassDetail() {
                     </div>
                     <div className="min-w-0">
                       <p className="font-medium text-slate-900 truncate">{m.name}</p>
-                      {m.teacher ? (
+                      {!isTeach && (m.teacher ? (
                         <p className="text-xs text-slate-500 truncate">{m.teacher.first_name} {m.teacher.last_name}</p>
                       ) : (
                         <p className="text-xs text-slate-400 italic">Pas de prof assigné</p>
-                      )}
+                      ))}
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
@@ -416,7 +468,7 @@ export default function ClassDetail() {
               <span className="text-sm font-medium text-slate-900">{cls.school_year_label ?? '—'}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-slate-100">
-              <span className="text-sm text-slate-500">Matières au programme</span>
+              <span className="text-sm text-slate-500">{isTeach ? 'Mes matières' : 'Matières au programme'}</span>
               <span className="text-sm font-medium text-slate-900">{subjects.data?.length ?? '—'}</span>
             </div>
             <div className="flex justify-between py-2">
@@ -433,7 +485,11 @@ export default function ClassDetail() {
 
       {/* Modal détail élève */}
       {selectedStudent && (
-        <StudentDetail student={selectedStudent} classCoefs={classCoefs} onClose={() => setSelectedStudent(null)} />
+        <StudentDetail
+          student={selectedStudent}
+          classCoefs={classCoefs}
+          allowedSubjectIds={isTeach ? (subjects.isSuccess ? subjects.data.map(x => x.id) : undefined) : null}
+          onClose={() => setSelectedStudent(null)} />
       )}
 
       {/* Modal ajout / coefficient d'une matière */}
