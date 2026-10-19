@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, BookMarked } from 'lucide-react'
 import { useToast } from '../contexts/ToastContext'
-import { getSubjects, createSubject, updateSubject, deleteSubject } from '../lib/db'
+import { getSubjects, createSubject, updateSubject, deleteSubject, getAllClassSubjects } from '../lib/db'
 import PageHeader from '../components/ui/PageHeader'
 import Modal from '../components/ui/Modal'
 import EmptyState from '../components/ui/EmptyState'
@@ -16,6 +16,9 @@ export default function Subjects() {
   const [form, setForm] = useState({ name: '', code: '', default_coefficient: 1 })
 
   const subjects = useQuery({ queryKey: ['subjects'], queryFn: getSubjects })
+  const links = useQuery({ queryKey: ['class-subjects-all'], queryFn: getAllClassSubjects, staleTime: 5 * 60 * 1000 })
+  // Nombre de classes qui utilisent la matière (la matière, elle, n'existe qu'une fois)
+  const classCount = (sid) => links.data?.filter(l => l.subject_id === sid).length ?? 0
 
   const openCreate = () => { setEditing(null); setForm({ name: '', code: '', default_coefficient: 1 }); setOpen(true) }
   const openEdit = (s) => { setEditing(s); setForm({ name: s.name, code: s.code ?? '', default_coefficient: s.default_coefficient ?? 1 }); setOpen(true) }
@@ -37,11 +40,12 @@ export default function Subjects() {
   }
 
   const remove = async (s) => {
-    if (!confirm(`Supprimer "${s.name}" ?`)) return
+    if (!confirm(`Supprimer "${s.name}" ? Elle sera retirée de toutes les classes.`)) return
     try {
       await deleteSubject(s.id)
       toast.success('Supprimée')
       qc.invalidateQueries({ queryKey: ['subjects'] })
+      qc.invalidateQueries({ queryKey: ['class-subjects-all'] })
     } catch (err) { toast.error(err.message) }
   }
 
@@ -49,7 +53,7 @@ export default function Subjects() {
     <div>
       <PageHeader
         title="Matières"
-        description="Catalogue des matières enseignées"
+        description="Catalogue de l'école : chaque matière n'existe qu'une fois. Le coefficient se règle ensuite classe par classe."
         actions={<button onClick={openCreate} className="btn-primary"><Plus size={16} /> Nouvelle matière</button>}
       />
 
@@ -64,7 +68,8 @@ export default function Subjects() {
               <tr>
                 <th className="table-th">Nom</th>
                 <th className="table-th">Code</th>
-                <th className="table-th">Coefficient par défaut</th>
+                <th className="table-th">Coef. par défaut</th>
+                <th className="table-th">Classes</th>
                 <th className="table-th text-right">Actions</th>
               </tr>
             </thead>
@@ -79,6 +84,7 @@ export default function Subjects() {
                   </td>
                   <td className="table-td"><code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">{s.code ?? '—'}</code></td>
                   <td className="table-td">{s.default_coefficient}</td>
+                  <td className="table-td">{links.isLoading ? '…' : classCount(s.id)}</td>
                   <td className="table-td text-right">
                     <div className="flex gap-1 justify-end">
                       <button onClick={() => openEdit(s)} className="btn-ghost p-1.5"><Pencil size={14} /></button>
@@ -105,7 +111,7 @@ export default function Subjects() {
             <input className="input" required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
           <div><label className="label">Code</label>
             <input className="input" value={form.code} onChange={e => setForm({ ...form, code: e.target.value })} placeholder="Ex : MATH, FR" /></div>
-          <div><label className="label">Coefficient par défaut</label>
+          <div><label className="label">Coefficient par défaut (proposé à l'ajout dans une classe)</label>
             <input type="number" step="0.5" min="0.5" className="input" value={form.default_coefficient} onChange={e => setForm({ ...form, default_coefficient: e.target.value })} /></div>
         </form>
       </Modal>

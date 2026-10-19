@@ -85,7 +85,53 @@ export const updateSubject = async (id, data) => {
 }
 
 export const deleteSubject = async (id) => {
-  await deleteDoc(doc(db, 'subjects', id))
+  // Retire aussi la matière de toutes les classes où elle était utilisée
+  const links = await getDocs(query(collection(db, 'class_subjects'), where('subject_id', '==', id)))
+  const batch = writeBatch(db)
+  links.docs.forEach(d => batch.delete(d.ref))
+  batch.delete(doc(db, 'subjects', id))
+  await batch.commit()
+}
+
+// ─── MATIÈRES PAR CLASSE (coefficient propre à chaque classe) ───
+// Une matière du catalogue existe une seule fois ; chaque classe la « relie » avec son coefficient.
+// L'id fixe classe_matière empêche les doublons.
+export const getClassSubjects = async (classId) => {
+  const snap = await getDocs(query(collection(db, 'class_subjects'), where('class_id', '==', classId)))
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+}
+
+export const getAllClassSubjects = async () => {
+  const snap = await getDocs(collection(db, 'class_subjects'))
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+}
+
+export const setClassSubject = async (classId, subjectId, coefficient) => {
+  const coef = Number(coefficient)
+  if (!(coef > 0)) throw new Error('Le coefficient doit être supérieur à 0')
+  await setDoc(doc(db, 'class_subjects', `${classId}_${subjectId}`), {
+    class_id: classId, subject_id: subjectId, coefficient: coef, updated_at: serverTimestamp(),
+  }, { merge: true })
+}
+
+export const removeClassSubject = async (classId, subjectId) => {
+  await deleteDoc(doc(db, 'class_subjects', `${classId}_${subjectId}`))
+}
+
+// Copie les matières (et coefficients) d'une classe vers une autre, sans toucher à celles déjà présentes
+export const copyClassSubjects = async (fromClassId, toClassId) => {
+  const [source, existing] = await Promise.all([getClassSubjects(fromClassId), getClassSubjects(toClassId)])
+  const have = new Set(existing.map(e => e.subject_id))
+  const toAdd = source.filter(s => !have.has(s.subject_id))
+  if (!toAdd.length) return 0
+  const batch = writeBatch(db)
+  for (const s of toAdd) {
+    batch.set(doc(db, 'class_subjects', `${toClassId}_${s.subject_id}`), {
+      class_id: toClassId, subject_id: s.subject_id, coefficient: s.coefficient, updated_at: serverTimestamp(),
+    })
+  }
+  await batch.commit()
+  return toAdd.length
 }
 
 // ─── STUDENTS ────────────────────────────────────────────

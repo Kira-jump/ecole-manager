@@ -1,12 +1,17 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { isAdmin, isPedagogy } from '../lib/roles'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Users, BookOpen, Info, GraduationCap, Phone, Calendar, User } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, Users, BookOpen, Info, GraduationCap, Phone, Calendar, User, Plus, Pencil, Trash2, Copy } from 'lucide-react'
 import { doc, getDoc, collection, query, where, getDocs, orderBy } from 'firebase/firestore'
 import { db } from '../lib/firebase'
-import { getStudents, getSubjects, getTeachers, getAssignments, getGrades, getMyAttendance } from '../lib/db'
+import {
+  getStudents, getSubjects, getTeachers, getAssignments, getGrades, getMyAttendance, getClasses,
+  getClassSubjects, getClassAssignments, setClassSubject, removeClassSubject, copyClassSubjects,
+} from '../lib/db'
+import { computeAverages, buildCoefMap } from '../lib/averages'
+import { useToast } from '../contexts/ToastContext'
 import Spinner from '../components/ui/Spinner'
 import EmptyState from '../components/ui/EmptyState'
 import Modal from '../components/ui/Modal'
@@ -33,39 +38,39 @@ function useClassStudents(classId) {
   })
 }
 
+// Matières d'une classe = lignes class_subjects (avec le coefficient PROPRE à la classe)
 function useClassSubjects(classId) {
   return useQuery({
     queryKey: ['class-subjects', classId],
     enabled: !!classId,
     queryFn: async () => {
-      // Récupère toutes les affectations de cette classe
-      const q = query(collection(db, 'teaching_assignments'), where('class_id', '==', classId))
-      const snap = await getDocs(q)
-      const assignments = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-
-      if (!assignments.length) return []
-
-      // Récupère les matières uniques
-      const subjectIds = [...new Set(assignments.map(a => a.subject_id))]
-      const allSubjects = await getSubjects()
-      const subjects = allSubjects.filter(s => subjectIds.includes(s.id))
-
-      // Pour chaque matière, trouve le prof (noms lus depuis profiles)
-      const allTeachers = await getTeachers()
-      const result = subjects.map((s) => {
-        const ass = assignments.find(a => a.subject_id === s.id)
-        const teacher = ass?.teacher_id ? (allTeachers.find(t => t.id === ass.teacher_id) ?? null) : null
-        return { ...s, teacher }
-      })
-
-      return result
+      const [links, allSubjects, assignments] = await Promise.all([
+        getClassSubjects(classId), getSubjects(), getClassAssignments(classId),
+      ])
+      if (!links.length) return []
+      const allTeachers = assignments.length ? await getTeachers() : []
+      return links
+        .map((l) => {
+          const subj = allSubjects.find(x => x.id === l.subject_id)
+          if (!subj) return null // matière supprimée du catalogue
+          const ass = assignments.find(a => a.subject_id === l.subject_id)
+          const teacher = ass?.teacher_id ? (allTeachers.find(t => t.id === ass.teacher_id) ?? null) : null
+          return {
+            ...subj,
+            subject_id: subj.id,
+            coefficient: Number(l.coefficient) || Number(subj.default_coefficient) || 1,
+            teacher,
+          }
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.name.localeCompare(b.name))
     },
   })
 }
 
 // ── Composant détail élève ──────────────────────────────────────────────
 
-function StudentDetail({ student, onClose }) {
+function StudentDetail({ student, onClose, classCoefs }) {
   const grades = useQuery({
     queryKey: ['student-grades', student.id],
     queryFn: () => getGrades({ studentId: student.id }),
@@ -78,12 +83,11 @@ function StudentDetail({ student, onClose }) {
 
   const subjectsList = useQuery({ queryKey: ['subjects-list'], queryFn: getSubjects })
 
-  // Calcul moyenne générale
+  // Moyenne générale : moyenne par matière, puis pondérée par le coefficient de la classe
   const moyenne = (() => {
     if (!grades.data?.length) return null
-    const total = grades.data.reduce((sum, g) => sum + (Number(g.value) * Number(g.coefficient)), 0)
-    const totalCoef = grades.data.reduce((sum, g) => sum + Number(g.coefficient), 0)
-    return totalCoef > 0 ? (total / totalCoef).toFixed(2) : null
+    const { general } = computeAverages(grades.data, subjectsList.data, classCoefs)
+    return general === null ? null : general.toFixed(2)
   })()
 
   const absences = attendance.data?.filter(a => a.status === 'absent').length ?? 0
@@ -211,6 +215,61 @@ export default function ClassDetail() {
   const classQuery = useClass(id)
   const students = useClassStudents(id)
   const subjects = useClassSubjects(id)
+  const toast = useToast()
+  const qc = useQueryClient()
+
+  const [editor, setEditor] = useState(null) // { isNew, subject_id, name, coefficient }
+  const [copyOpen, setCopyOpen] = useState(false)
+  const [copyFrom, setCopyFrom] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  // Chargés seulement quand la fenêtre correspondante est ouverte (économie de lectures)
+  const catalog = useQuery({ queryKey: ['subjects-catalog'], queryFn: getSubjects, enabled: canEdit && !!editor?.isNew })
+  const allClasses = useQuery({ queryKey: ['classes-for-copy'], queryFn: getClasses, enabled: canEdit && copyOpen })
+
+  const classCoefs = useMemo(() => buildCoefMap(subjects.data), [subjects.data])
+  const available = (catalog.data ?? []).filter(c => !(subjects.data ?? []).some(x => x.id === c.id))
+
+  const refreshSubjects = () => {
+    qc.invalidateQueries({ queryKey: ['class-subjects', id] })
+    qc.invalidateQueries({ queryKey: ['class-subjects-all'] })
+  }
+  const openAdd = () => setEditor({ isNew: true, subject_id: '', name: '', coefficient: 1 })
+  const openEditCoef = (m) => setEditor({ isNew: false, subject_id: m.id, name: m.name, coefficient: m.coefficient })
+  const pickSubject = (sid) => {
+    const m = catalog.data?.find(x => x.id === sid)
+    setEditor(e => ({ ...e, subject_id: sid, name: m?.name ?? '', coefficient: m?.default_coefficient ?? 1 }))
+  }
+  const saveCoef = async (e) => {
+    e.preventDefault()
+    if (!editor?.subject_id) { toast.error('Choisis une matière'); return }
+    setSaving(true)
+    try {
+      await setClassSubject(id, editor.subject_id, editor.coefficient)
+      toast.success(editor.isNew ? 'Matière ajoutée à la classe' : 'Coefficient mis à jour')
+      refreshSubjects()
+      setEditor(null)
+    } catch (err) { toast.error(err?.message ?? 'Échec') } finally { setSaving(false) }
+  }
+  const removeFromClass = async (m) => {
+    if (!confirm(`Retirer « ${m.name} » de cette classe ? Les notes déjà saisies sont conservées.`)) return
+    try {
+      await removeClassSubject(id, m.id)
+      toast.success('Matière retirée de la classe')
+      refreshSubjects()
+    } catch (err) { toast.error(err?.message ?? 'Échec') }
+  }
+  const doCopy = async () => {
+    if (!copyFrom) return
+    setSaving(true)
+    try {
+      const n = await copyClassSubjects(copyFrom, id)
+      toast.success(n ? `${n} matière(s) copiée(s)` : 'Rien à copier : tout est déjà présent')
+      refreshSubjects()
+      setCopyOpen(false)
+      setCopyFrom('')
+    } catch (err) { toast.error(err?.message ?? 'Échec') } finally { setSaving(false) }
+  }
 
   const cls = classQuery.data
 
@@ -290,30 +349,42 @@ export default function ClassDetail() {
       {/* Tab Matières */}
       {tab === 'matieres' && (
         <div className="card overflow-hidden">
+          {canEdit && (
+            <div className="flex flex-wrap gap-2 justify-end p-3 border-b border-slate-100">
+              <button onClick={() => { setCopyFrom(''); setCopyOpen(true) }} className="btn-secondary"><Copy size={16} /> Copier d'une classe</button>
+              <button onClick={openAdd} className="btn-primary"><Plus size={16} /> Ajouter une matière</button>
+            </div>
+          )}
           {subjects.isLoading ? (
             <div className="flex justify-center py-12"><Spinner /></div>
           ) : subjects.data?.length === 0 ? (
-            <EmptyState icon={BookOpen} title="Aucune matière" description="Affecte des enseignants à cette classe depuis la page Enseignants." />
+            <EmptyState icon={BookOpen} title="Aucune matière"
+              description={canEdit ? 'Ajoute les matières de cette classe avec leur coefficient, ou copie-les depuis une autre classe.' : 'Aucune matière n\'est encore définie pour cette classe.'} />
           ) : (
             <div className="divide-y divide-slate-100">
-              {subjects.data.map(s => (
-                <div key={s.id} className="flex items-center justify-between p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+              {subjects.data.map(m => (
+                <div key={m.id} className="flex items-center justify-between gap-3 p-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 shrink-0 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
                       <BookOpen size={16} />
                     </div>
-                    <div>
-                      <p className="font-medium text-slate-900">{s.name}</p>
-                      {s.code && <code className="text-xs text-slate-400">{s.code}</code>}
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-900 truncate">{m.name}</p>
+                      {m.teacher ? (
+                        <p className="text-xs text-slate-500 truncate">{m.teacher.first_name} {m.teacher.last_name}</p>
+                      ) : (
+                        <p className="text-xs text-slate-400 italic">Pas de prof assigné</p>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right">
-                    {s.teacher ? (
-                      <p className="text-sm text-slate-700">{s.teacher.first_name} {s.teacher.last_name}</p>
-                    ) : (
-                      <p className="text-xs text-slate-400 italic">Pas de prof assigné</p>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="text-xs font-semibold bg-brand-50 text-brand-700 px-2 py-1 rounded-lg">Coef. {m.coefficient}</span>
+                    {canEdit && (
+                      <>
+                        <button onClick={() => openEditCoef(m)} className="btn-ghost p-1.5" title="Modifier le coefficient"><Pencil size={14} /></button>
+                        <button onClick={() => removeFromClass(m)} className="btn-ghost p-1.5 text-red-600 hover:bg-red-50" title="Retirer de la classe"><Trash2 size={14} /></button>
+                      </>
                     )}
-                    <p className="text-xs text-slate-400">Coef. {s.default_coefficient}</p>
                   </div>
                 </div>
               ))}
@@ -345,7 +416,7 @@ export default function ClassDetail() {
               <span className="text-sm font-medium text-slate-900">{cls.school_year_label ?? '—'}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-slate-100">
-              <span className="text-sm text-slate-500">Matières enseignées</span>
+              <span className="text-sm text-slate-500">Matières au programme</span>
               <span className="text-sm font-medium text-slate-900">{subjects.data?.length ?? '—'}</span>
             </div>
             <div className="flex justify-between py-2">
@@ -362,8 +433,63 @@ export default function ClassDetail() {
 
       {/* Modal détail élève */}
       {selectedStudent && (
-        <StudentDetail student={selectedStudent} onClose={() => setSelectedStudent(null)} />
+        <StudentDetail student={selectedStudent} classCoefs={classCoefs} onClose={() => setSelectedStudent(null)} />
       )}
+
+      {/* Modal ajout / coefficient d'une matière */}
+      <Modal open={!!editor} onClose={() => setEditor(null)}
+        title={editor?.isNew ? 'Ajouter une matière à la classe' : 'Coefficient de la matière'}
+        footer={
+          <>
+            <button onClick={() => setEditor(null)} className="btn-secondary">Annuler</button>
+            <button form="class-subject-form" type="submit" disabled={saving} className="btn-primary">Enregistrer</button>
+          </>
+        }
+      >
+        {editor && (
+          <form id="class-subject-form" onSubmit={saveCoef} className="space-y-4">
+            {editor.isNew ? (
+              <div>
+                <label className="label">Matière *</label>
+                <select className="input" required value={editor.subject_id} onChange={e => pickSubject(e.target.value)}>
+                  <option value="">Choisir…</option>
+                  {available.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+                {catalog.isSuccess && available.length === 0 && (
+                  <p className="text-xs text-slate-500 mt-1">Toutes les matières du catalogue sont déjà dans cette classe. Crée-en une nouvelle dans la page Matières.</p>
+                )}
+              </div>
+            ) : (
+              <p className="font-medium text-slate-900">{editor.name}</p>
+            )}
+            <div>
+              <label className="label">Coefficient dans {cls.name} *</label>
+              <input type="number" step="0.5" min="0.5" required className="input" value={editor.coefficient}
+                onChange={e => setEditor({ ...editor, coefficient: e.target.value })} />
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* Modal copie depuis une autre classe */}
+      <Modal open={copyOpen} onClose={() => setCopyOpen(false)} title="Copier les matières d'une autre classe"
+        footer={
+          <>
+            <button onClick={() => setCopyOpen(false)} className="btn-secondary">Annuler</button>
+            <button onClick={doCopy} disabled={!copyFrom || saving} className="btn-primary">Copier</button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-slate-600">
+            Les matières et leurs coefficients sont copiés. Celles déjà présentes ici ne sont pas modifiées. Tu pourras ensuite ajuster chaque coefficient.
+          </p>
+          <select className="input" value={copyFrom} onChange={e => setCopyFrom(e.target.value)}>
+            <option value="">Choisir la classe source…</option>
+            {(allClasses.data ?? []).filter(c => c.id !== id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+      </Modal>
     </div>
   )
 }
