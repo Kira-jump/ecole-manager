@@ -1,7 +1,7 @@
 import {
   collection, doc, getDoc, getDocs, addDoc, updateDoc,
   deleteDoc, query, where, orderBy, limit, setDoc,
-  serverTimestamp, getCountFromServer, writeBatch,
+  serverTimestamp, getCountFromServer, writeBatch, arrayUnion,
 } from 'firebase/firestore'
 import { db } from './firebase'
 
@@ -214,16 +214,32 @@ export const getAssignments = async (teacherId) => {
 
 // Identifiant = prof_classe_matière : les règles Firestore vérifient l'affectation directement,
 // et la même affectation ne peut plus être créée deux fois.
+// teachers/{uid}.class_ids = classes du prof, maintenu ici (même lot atomique que l'affectation).
+// Sert aux règles Firestore : « élèves et présences de MES classes ».
 export const addAssignment = async (data) => {
   const { teacher_id, class_id, subject_id } = data
   if (!teacher_id || !class_id || !subject_id) throw new Error('Affectation incomplète')
-  await setDoc(doc(db, 'teaching_assignments', `${teacher_id}_${class_id}_${subject_id}`), {
+  const batch = writeBatch(db)
+  batch.set(doc(db, 'teaching_assignments', `${teacher_id}_${class_id}_${subject_id}`), {
     ...data, created_at: serverTimestamp(),
   })
+  batch.update(doc(db, 'teachers', teacher_id), { class_ids: arrayUnion(class_id) })
+  await batch.commit()
 }
 
+// Une classe reste dans class_ids tant qu'il reste au moins une autre affectation dans cette classe.
 export const deleteAssignment = async (id) => {
-  await deleteDoc(doc(db, 'teaching_assignments', id))
+  const ref = doc(db, 'teaching_assignments', id)
+  const snap = await getDoc(ref)
+  const batch = writeBatch(db)
+  batch.delete(ref)
+  const teacherId = snap.exists() ? snap.data().teacher_id : null
+  if (teacherId) {
+    const rest = (await getAssignments(teacherId)).filter(a => a.id !== id)
+    const classIds = [...new Set(rest.map(a => a.class_id).filter(Boolean))]
+    batch.update(doc(db, 'teachers', teacherId), { class_ids: classIds })
+  }
+  await batch.commit()
 }
 
 // ─── GRADES ──────────────────────────────────────────────
