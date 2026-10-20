@@ -92,20 +92,24 @@ function useClassSubjects(classId, { restricted = false, teacherId = null } = {}
 
 // allowedSubjectIds : null = aucune restriction ; tableau = prof (notes limitées à ses matières) ;
 // undefined = liste des matières du prof pas encore chargée (on attend)
-function StudentDetail({ student, onClose, classCoefs, allowedSubjectIds = null }) {
+function StudentDetail({ student, onClose, classCoefs, classId, allowedSubjectIds = null }) {
   const restricted = allowedSubjectIds !== null
   const grades = useQuery({
-    queryKey: ['student-grades', student.id, restricted ? 'mine' : 'all'],
+    queryKey: ['student-grades', student.id, restricted ? ['mine', classId, allowedSubjectIds] : 'all'],
     enabled: allowedSubjectIds !== undefined,
     queryFn: async () => {
-      const all = await getGrades({ studentId: student.id })
-      return restricted ? all.filter(g => allowedSubjectIds.includes(g.subject_id)) : all
+      if (!restricted) return getGrades({ studentId: student.id })
+      // Prof : une requête par matière autorisée (élève + classe + matière), jamais « toutes les notes de l'élève »
+      const lists = await Promise.all(allowedSubjectIds.map(sid =>
+        getGrades({ studentId: student.id, classFilter: classId, subjectFilter: sid })))
+      const dkey = (v) => (typeof v === 'string' ? v : v?.toDate ? v.toDate().toISOString().slice(0, 10) : '')
+      return lists.flat().sort((a, b) => dkey(b.date).localeCompare(dkey(a.date)))
     },
   })
 
   const attendance = useQuery({
-    queryKey: ['student-attendance', student.id],
-    queryFn: () => getMyAttendance(student.id),
+    queryKey: ['student-attendance', student.id, restricted ? classId : 'all'],
+    queryFn: () => getMyAttendance(student.id, restricted ? classId : null),
   })
 
   const subjectsList = useQuery({ queryKey: ['subjects-list'], queryFn: getSubjects })
@@ -488,6 +492,7 @@ export default function ClassDetail() {
         <StudentDetail
           student={selectedStudent}
           classCoefs={classCoefs}
+          classId={id}
           allowedSubjectIds={isTeach ? (subjects.isSuccess ? subjects.data.map(x => x.id) : undefined) : null}
           onClose={() => setSelectedStudent(null)} />
       )}

@@ -359,10 +359,13 @@ export const justifyAbsence = async (studentId, date, reason, justifiedBy) => {
   })
 }
 
-export const getMyAttendance = async (studentId) => {
+// classId (optionnel) : obligatoire pour un prof, afin que les règles Firestore puissent
+// vérifier que la requête reste dans SES classes.
+export const getMyAttendance = async (studentId, classId = null) => {
   // Pas d'orderBy côté Firestore (évite un index composite) : le tri se fait ici
-  const q = query(collection(db, 'attendance'), where('student_id', '==', studentId))
-  const snap = await getDocs(q)
+  const wheres = [where('student_id', '==', studentId)]
+  if (classId) wheres.push(where('class_id', '==', classId))
+  const snap = await getDocs(query(collection(db, 'attendance'), ...wheres))
   return snap.docs
     .map(d => ({ id: d.id, ...d.data() }))
     .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
