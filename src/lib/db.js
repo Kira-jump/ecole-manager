@@ -302,54 +302,51 @@ export const deleteGrade = async (id) => {
 }
 
 // ─── ATTENDANCE ──────────────────────────────────────────
+// Présence : id = studentId_date, avec class_id sur chaque document.
+// Les règles Firestore vérifient ainsi « présence de MA classe » sans lecture supplémentaire.
 export const getAttendanceForClass = async (classId, date) => {
   const students = await getStudents(classId)
   if (!students.length) return []
-  const ids = students.map(s => s.id)
-  // Firestore limite 'in' à 30 valeurs : on découpe en paquets
-  const chunks = []
-  for (let i = 0; i < ids.length; i += 30) chunks.push(ids.slice(i, i + 30))
-  const snaps = await Promise.all(chunks.map(chunk => getDocs(query(
+  // Une seule requête (2 égalités : pas d'index composite nécessaire)
+  const snap = await getDocs(query(
     collection(db, 'attendance'),
-    where('date', '==', date),
-    where('student_id', 'in', chunk)
-  ))))
+    where('class_id', '==', classId),
+    where('date', '==', date)
+  ))
   const attMap = {}
-  snaps.forEach(snap => snap.docs.forEach(d => { attMap[d.data().student_id] = { id: d.id, ...d.data() } }))
+  snap.docs.forEach(d => { attMap[d.data().student_id] = { id: d.id, ...d.data() } })
   return students.map(s => ({ ...s, attendance: attMap[s.id] ?? null }))
 }
 
-export const setAttendance = async (studentId, date, status, recordedBy) => {
-  const q = query(
-    collection(db, 'attendance'),
-    where('student_id', '==', studentId),
-    where('date', '==', date),
-    limit(1)
-  )
-  const snap = await getDocs(q)
-  if (snap.empty) {
-    await addDoc(collection(db, 'attendance'), {
-      student_id: studentId, date, status,
-      recorded_by: recordedBy, created_at: serverTimestamp()
+// Écriture directe (setDoc) : pas de lecture avant. Re-marquer un élève remplace la fiche du jour
+// (une ancienne justification est donc effacée si le statut change).
+export const setAttendance = async (studentId, classId, date, status, recordedBy) => {
+  if (!studentId || !classId || !date) throw new Error('Présence incomplète')
+  await setDoc(doc(db, 'attendance', `${studentId}_${date}`), {
+    student_id: studentId, class_id: classId, date, status,
+    recorded_by: recordedBy, updated_at: serverTimestamp(),
+  })
+}
+
+// « Tous présents » : lots atomiques (Firestore accepte 500 écritures max par lot)
+export const setAllPresent = async (classId, date, studentIds, recordedBy) => {
+  if (!classId || !date) throw new Error('Présence incomplète')
+  for (let i = 0; i < studentIds.length; i += 400) {
+    const batch = writeBatch(db)
+    studentIds.slice(i, i + 400).forEach(sid => {
+      batch.set(doc(db, 'attendance', `${sid}_${date}`), {
+        student_id: sid, class_id: classId, date, status: 'present',
+        recorded_by: recordedBy, updated_at: serverTimestamp(),
+      })
     })
-  } else {
-    await updateDoc(doc(db, 'attendance', snap.docs[0].id), { status, recorded_by: recordedBy })
+    await batch.commit()
   }
 }
 
 export const justifyAbsence = async (studentId, date, reason, justifiedBy) => {
-  const q = query(
-    collection(db, 'attendance'),
-    where('student_id', '==', studentId),
-    where('date', '==', date),
-    limit(1)
-  )
-  const snap = await getDocs(q)
-  if (!snap.empty) {
-    await updateDoc(doc(db, 'attendance', snap.docs[0].id), {
-      status: 'justified', justification: reason, justified_by: justifiedBy
-    })
-  }
+  await updateDoc(doc(db, 'attendance', `${studentId}_${date}`), {
+    status: 'justified', justification: reason, justified_by: justifiedBy,
+  })
 }
 
 export const getMyAttendance = async (studentId) => {

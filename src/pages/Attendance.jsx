@@ -5,7 +5,7 @@ import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
 import { isStudent, isTeacher, isStaff, canManageDiscipline } from '../lib/roles'
 import { canTakeAttendance } from '../lib/access'
-import { getAttendanceForClass, setAttendance, justifyAbsence, getMyAttendance, getStudentByProfileId } from '../lib/db'
+import { getAttendanceForClass, setAttendance, setAllPresent, justifyAbsence, getMyAttendance, getStudentByProfileId } from '../lib/db'
 import { useMyClasses } from '../lib/useMyClasses'
 import PageHeader from '../components/ui/PageHeader'
 import EmptyState from '../components/ui/EmptyState'
@@ -57,7 +57,7 @@ export default function Attendance() {
   const markStatus = async (studentId, status) => {
     if (!canTakeAttendance(role)) return
     try {
-      await setAttendance(studentId, date, status, profile.id)
+      await setAttendance(studentId, classId, date, status, profile.id)
       qc.invalidateQueries({ queryKey: ['attendance-students', classId, date] })
     } catch (err) { toast.error(err?.message ?? 'Échec') }
   }
@@ -66,7 +66,7 @@ export default function Attendance() {
     if (!students.data?.length) return
     if (!confirm(`Marquer les ${students.data.length} élèves comme présents ?`)) return
     try {
-      await Promise.all(students.data.map(s => setAttendance(s.id, date, 'present', profile.id)))
+      await setAllPresent(classId, date, students.data.map(s => s.id), profile.id)
       qc.invalidateQueries({ queryKey: ['attendance-students', classId, date] })
       toast.success('Tous marqués présents')
     } catch (err) { toast.error(err?.message ?? 'Échec') }
