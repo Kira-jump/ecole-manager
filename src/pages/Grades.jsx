@@ -99,8 +99,7 @@ export default function Grades() {
           .filter(a => a.subject_id === form.subject_id)
           .map(a => a.class_id)
         if (!classIds.length) return []
-        const all = await getStudents()
-        return all.filter(s => classIds.includes(s.class_id))
+        return getStudents('', classIds)
       }
       return getStudents(form.subject_id ? classFilter : '')
     },
@@ -114,16 +113,24 @@ export default function Grades() {
     // On attend les affectations du prof / la fiche de l'élève avant de lancer la requête (sinon aucun filtre)
     enabled: isTeacher(role) ? !!myAssignments.data : isStudent(role) ? !!myStudent.data?.id : true,
     queryFn: async () => {
-      const list = await getGrades({
+      // Prof : une requête ciblée par couple classe + matière qui lui est affecté(e)
+      if (isTeacher(role)) {
+        const pairs = new Map()
+        for (const a of (myAssignments.data ?? [])) {
+          if (classFilter && a.class_id !== classFilter) continue
+          if (subjectFilter && a.subject_id !== subjectFilter) continue
+          pairs.set(`${a.class_id}:${a.subject_id}`, a)
+        }
+        const lists = await Promise.all([...pairs.values()].map(a =>
+          getGrades({ classFilter: a.class_id, subjectFilter: a.subject_id, termFilter })))
+        return lists.flat().sort((x, y) => String(y.date ?? '').localeCompare(String(x.date ?? '')))
+      }
+      return getGrades({
         classFilter,
         subjectFilter,
         termFilter,
         studentId: isStudent(role) ? myStudent.data?.id : undefined,
       })
-      if (isTeacher(role)) {
-        return list.filter(g => (myAssignments.data ?? []).some(a => a.class_id === g.class_id && a.subject_id === g.subject_id))
-      }
-      return list
     },
   })
 

@@ -136,11 +136,27 @@ export const copyClassSubjects = async (fromClassId, toClassId) => {
 
 // ─── STUDENTS ────────────────────────────────────────────
 export const getStudents = async (classFilter = '', classIds = null) => {
-  let q = query(collection(db, 'students'), orderBy('matricule'))
-  const snap = await getDocs(q)
-  let data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-  if (classFilter) data = data.filter(s => s.class_id === classFilter)
-  if (classIds) data = data.filter(s => classIds.includes(s.class_id))
+  const col = collection(db, 'students')
+  let data
+  if (classFilter) {
+    // Une classe précise : on ne lit QUE les élèves de cette classe
+    if (classIds && !classIds.includes(classFilter)) return []
+    const snap = await getDocs(query(col, where('class_id', '==', classFilter)))
+    data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  } else if (classIds) {
+    // Plusieurs classes (ex. celles d'un prof) : Firestore limite 'in' à 30 valeurs, on découpe
+    if (!classIds.length) return []
+    const chunks = []
+    for (let i = 0; i < classIds.length; i += 30) chunks.push(classIds.slice(i, i + 30))
+    const snaps = await Promise.all(chunks.map(c => getDocs(query(col, where('class_id', 'in', c)))))
+    data = snaps.flatMap(sn => sn.docs.map(d => ({ id: d.id, ...d.data() })))
+  } else {
+    // Toute l'école : réservé au personnel autorisé par les règles Firestore
+    const snap = await getDocs(query(col, orderBy('matricule')))
+    data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  }
+  // Tri par matricule ici (évite un index composite côté Firestore)
+  data.sort((a, b) => ((a.matricule ?? '') < (b.matricule ?? '') ? -1 : (a.matricule ?? '') > (b.matricule ?? '') ? 1 : 0))
 
   const enriched = await Promise.all(data.map(async (s) => {
     if (!s.profile_id) return s
@@ -206,15 +222,28 @@ export const deleteAssignment = async (id) => {
 
 // ─── GRADES ──────────────────────────────────────────────
 export const getGrades = async ({ classFilter, subjectFilter, termFilter, studentId, teacherId } = {}) => {
-  let q = query(collection(db, 'grades'), orderBy('date', 'desc'), limit(500))
-  const snap = await getDocs(q)
-  let data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-  if (classFilter) data = data.filter(g => g.class_id === classFilter)
-  if (subjectFilter) data = data.filter(g => g.subject_id === subjectFilter)
-  if (termFilter) data = data.filter(g => g.term === termFilter)
-  if (studentId) data = data.filter(g => g.student_id === studentId)
-  if (teacherId) data = data.filter(g => g.teacher_id === teacherId)
-  return data
+  const col = collection(db, 'grades')
+  // Filtres d'égalité envoyés à Firestore (pas d'index composite nécessaire) :
+  // on ne lit que les notes demandées, jamais « toute l'école puis on trie ».
+  const wheres = []
+  if (classFilter) wheres.push(where('class_id', '==', classFilter))
+  if (subjectFilter) wheres.push(where('subject_id', '==', subjectFilter))
+  if (termFilter) wheres.push(where('term', '==', termFilter))
+  if (studentId) wheres.push(where('student_id', '==', studentId))
+  if (teacherId) wheres.push(where('teacher_id', '==', teacherId))
+
+  if (!wheres.length) {
+    // Aucun filtre : 500 dernières notes de l'école (réservé au personnel autorisé)
+    const snap = await getDocs(query(col, orderBy('date', 'desc'), limit(500)))
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  }
+
+  const dkey = (v) => (typeof v === 'string' ? v : v?.toDate ? v.toDate().toISOString().slice(0, 10) : '')
+  const snap = await getDocs(query(col, ...wheres))
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => dkey(b.date).localeCompare(dkey(a.date)))
+    .slice(0, 500)
 }
 
 export const addGrade = async (data) => {
