@@ -87,12 +87,6 @@ export default function GradeSheet() {
     },
   })
 
-  const existing = useQuery({
-    queryKey: ['sheet-grades', classId, month],
-    enabled: !!classId && !!month,
-    queryFn: () => getSheetGrades(classId, month),
-  })
-
   // Colonnes = matières affectées à la classe (un prof ne voit que les siennes)
   const columns = useMemo(() => {
     const seen = new Set()
@@ -106,6 +100,15 @@ export default function GradeSheet() {
     }
     return list.sort((a, b) => a.name.localeCompare(b.name))
   }, [assignments.data, subjects.data, teacher, myTeacher.data?.id])
+
+  // Prof : une requête par matière affectée (les règles Firestore vérifient chaque couple classe+matière).
+  // Personnel : toute la classe. Le prof attend d'avoir ses matières avant de lancer la lecture.
+  const subjectIds = teacher ? columns.map(c => c.id) : null
+  const existing = useQuery({
+    queryKey: ['sheet-grades', classId, month, subjectIds],
+    enabled: !!classId && !!month && (!teacher || (!!myTeacher.data?.id && assignments.isSuccess && subjects.isSuccess)),
+    queryFn: () => getSheetGrades(classId, month, subjectIds),
+  })
 
   const existingMap = useMemo(() => {
     const m = {}

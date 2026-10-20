@@ -285,9 +285,19 @@ export const getClassAssignments = async (classId) => {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }))
 }
 
-export const getSheetGrades = async (classId, month) => {
-  const snap = await getDocs(query(collection(db, 'grades'), where('class_id', '==', classId), where('month', '==', month)))
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+// Sans subjectIds (personnel pédagogique) : une requête classe + mois.
+// Avec subjectIds (prof) : une requête par matière (classe + mois + matière), pour que les règles
+// Firestore puissent vérifier chaque couple classe+matière affecté.
+export const getSheetGrades = async (classId, month, subjectIds = null) => {
+  const col = collection(db, 'grades')
+  const toList = (snap) => snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  if (!subjectIds) {
+    return toList(await getDocs(query(col, where('class_id', '==', classId), where('month', '==', month))))
+  }
+  const snaps = await Promise.all(subjectIds.map(sid => getDocs(query(
+    col, where('class_id', '==', classId), where('month', '==', month), where('subject_id', '==', sid)
+  ))))
+  return snaps.flatMap(toList)
 }
 
 export const saveGradeSheet = async ({ sets, deletes }) => {
