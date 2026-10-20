@@ -159,7 +159,7 @@ export const getStudents = async (classFilter = '', classIds = null) => {
   data.sort((a, b) => ((a.matricule ?? '') < (b.matricule ?? '') ? -1 : (a.matricule ?? '') > (b.matricule ?? '') ? 1 : 0))
 
   const enriched = await Promise.all(data.map(async (s) => {
-    if (!s.profile_id) return s
+    if (!s.profile_id || s.first_name || s.last_name) return s
     try {
       const pSnap = await getDoc(doc(db, 'profiles', s.profile_id))
       if (pSnap.exists()) {
@@ -404,6 +404,8 @@ export const createUserRecord = async (uid, profileData, role, extraData) => {
     // L'identifiant de la fiche = identifiant du compte (les règles Firestore en ont besoin)
     await setDoc(doc(db, 'students', uid), {
       profile_id: uid,
+      first_name: profileData.first_name ?? '',
+      last_name: profileData.last_name ?? '',
       email: profileData.email,
       ...extraData,
       created_at: serverTimestamp(),
