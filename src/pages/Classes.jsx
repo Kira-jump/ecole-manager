@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
 import { isTeacher, isPedagogy } from '../lib/roles'
-import { getClasses, getClassesForTeacher, createClass, updateClass, deleteClass, getActiveYear, getTeacherByProfileId } from '../lib/db'
+import { getClasses, getClassesForTeacher, countStudentsByClass, createClass, updateClass, deleteClass, getActiveYear, getTeacherByProfileId } from '../lib/db'
 import PageHeader from '../components/ui/PageHeader'
 import Modal from '../components/ui/Modal'
 import EmptyState from '../components/ui/EmptyState'
@@ -37,19 +37,11 @@ export default function Classes() {
       : getClasses(),
   })
 
+  const classIds = (classes.data ?? []).map(c => c.id)
   const counts = useQuery({
-    queryKey: ['student-counts'],
-    queryFn: async () => {
-      const { getDocs, collection, query } = await import('firebase/firestore')
-      const { db } = await import('../lib/firebase')
-      const snap = await getDocs(collection(db, 'students'))
-      const map = {}
-      snap.docs.forEach(d => {
-        const cid = d.data().class_id
-        if (cid) map[cid] = (map[cid] ?? 0) + 1
-      })
-      return map
-    },
+    queryKey: ['student-counts', classIds],
+    enabled: classIds.length > 0,
+    queryFn: () => countStudentsByClass(classIds),
   })
 
   const openCreate = () => { setEditing(null); setForm({ name: '', level: 'college', section: '', capacity: 50 }); setOpen(true) }

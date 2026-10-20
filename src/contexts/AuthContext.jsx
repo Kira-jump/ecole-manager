@@ -5,7 +5,7 @@ import {
   onAuthStateChanged,
   updatePassword,
 } from 'firebase/auth'
-import { doc, getDoc, updateDoc, getDocs, collection, query, where, limit } from 'firebase/firestore'
+import { doc, getDoc, updateDoc } from 'firebase/firestore'
 import { auth, db } from '../lib/firebase'
 
 const AuthContext = createContext(null)
@@ -42,21 +42,10 @@ export function AuthProvider({ children }) {
     return cred
   }
 
-  const signInWithMatricule = async (matricule, password) => {
-    // Convertit le matricule en faux email interne
-    const authEmail = matriculeToEmail(matricule)
-    try {
-      return await signIn(authEmail, password)
-    } catch (err) {
-      // Si ça échoue, essaie de chercher l'email dans Firestore
-      const q = query(collection(db, 'students'), where('matricule', '==', matricule), limit(1))
-      const snap = await getDocs(q)
-      if (snap.empty) throw new Error('Matricule introuvable')
-      const student = snap.docs[0].data()
-      if (!student.auth_email) throw new Error('Compte non configuré')
-      return await signIn(student.auth_email, password)
-    }
-  }
+  // Le matricule devient un faux email interne (même règle que Users.jsx à la création du compte).
+  // Pas de recherche dans Firestore : l'élève n'est pas encore connecté, les règles la refuseraient.
+  const signInWithMatricule = (matricule, password) =>
+    signIn(matriculeToEmail(matricule), password)
 
   const signOut = async () => {
     await firebaseSignOut(auth)

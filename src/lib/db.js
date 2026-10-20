@@ -401,6 +401,16 @@ export const countStudentsInClasses = async (classIds) => {
   return snaps.reduce((n, s) => n + s.data().count, 0)
 }
 
+// Nombre d'élèves par classe : un comptage serveur par classe (1 lecture facturée chacun),
+// au lieu de lire toute la collection students. Compatible avec les règles Firestore.
+export const countStudentsByClass = async (classIds) => {
+  const entries = await Promise.all(classIds.map(async (cid) => {
+    const snap = await getCountFromServer(query(collection(db, 'students'), where('class_id', '==', cid)))
+    return [cid, snap.data().count]
+  }))
+  return Object.fromEntries(entries)
+}
+
 export const getDashboardStats = async () => {
   const [students, teachers, classes, subjects] = await Promise.all([
     getCountFromServer(collection(db, 'students')),
