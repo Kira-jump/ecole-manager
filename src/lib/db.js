@@ -212,8 +212,14 @@ export const getAssignments = async (teacherId) => {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }))
 }
 
+// Identifiant = prof_classe_matière : les règles Firestore vérifient l'affectation directement,
+// et la même affectation ne peut plus être créée deux fois.
 export const addAssignment = async (data) => {
-  await addDoc(collection(db, 'teaching_assignments'), { ...data, created_at: serverTimestamp() })
+  const { teacher_id, class_id, subject_id } = data
+  if (!teacher_id || !class_id || !subject_id) throw new Error('Affectation incomplète')
+  await setDoc(doc(db, 'teaching_assignments', `${teacher_id}_${class_id}_${subject_id}`), {
+    ...data, created_at: serverTimestamp(),
+  })
 }
 
 export const deleteAssignment = async (id) => {
@@ -395,14 +401,15 @@ export const createUserRecord = async (uid, profileData, role, extraData) => {
     updated_at: serverTimestamp(),
   })
   if (role === 'eleve') {
-    await addDoc(collection(db, 'students'), {
+    // L'identifiant de la fiche = identifiant du compte (les règles Firestore en ont besoin)
+    await setDoc(doc(db, 'students', uid), {
       profile_id: uid,
       email: profileData.email,
       ...extraData,
       created_at: serverTimestamp(),
     })
   } else if (role === 'professeur') {
-    await addDoc(collection(db, 'teachers'), {
+    await setDoc(doc(db, 'teachers', uid), {
       profile_id: uid,
       ...extraData,
       created_at: serverTimestamp(),
